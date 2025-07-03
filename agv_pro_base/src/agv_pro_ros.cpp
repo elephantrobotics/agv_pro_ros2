@@ -30,37 +30,167 @@ uint16_t crc16_ibm(const uint8_t* data, size_t length) {
   return crc;
 }
 
-void AGV_PRO::set_auto_report(){
+std::vector<uint8_t> AGV_PRO::build_serial_frame(uint8_t cmd_id, const std::vector<uint8_t>& payload)
+{
+  std::vector<uint8_t> frame(RECEIVE_DATA_SIZE, 0x00);
+  frame[0] = 0xFE;
+  frame[1] = 0xFE;
+  frame[2] = 0x0B;
+  frame[3] = cmd_id;
 
-  std::array<uint8_t, 14> buf = {
-    0xFE, 0xFE, 0x0b, 0x23,
-    0x01, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00
-  };
+  for (size_t i = 0; i < payload.size() && i < 8; ++i) {
+    frame[4 + i] = payload[i];
+  }
 
-  uint16_t crc = crc16_ibm(buf.data(), 12);
-  buf[12] = (crc >> 8) & 0xff;
-  buf[13] = crc & 0xff;
+  uint16_t crc = crc16_ibm(frame.data(), 12);
+  frame[12] = (crc >> 8) & 0xff;
+  frame[13] = crc & 0xff;
 
-  std::vector<uint8_t> data_vec(buf.begin(), buf.end());
+  return frame;
+}
 
-  auto port = serial_driver_->port();
+void AGV_PRO::print_hex(const std::string& label, const std::vector<uint8_t>& data, std::optional<size_t> override_size) {
+  std::stringstream ss;
+  for (auto b : data) {
+    ss << std::hex << std::uppercase << std::setfill('0') << std::setw(2)
+       << static_cast<int>(b) << " ";
+  }
+  size_t len = override_size.value_or(data.size());
+  RCLCPP_INFO(this->get_logger(), "%s (%zu bytes): [%s]", label.c_str(), len, ss.str().c_str());
+}
 
-  try
-  {
-    size_t bytes_transmit_size = port->send(data_vec);
-    std::stringstream ss;
-    for (auto b : data_vec) {
-      ss << std::hex << std::uppercase << std::setfill('0') << std::setw(2)
-         << static_cast<int>(b) << " ";
+void AGV_PRO::send_serial_frame(const std::vector<uint8_t>& frame, bool debug)
+{
+  try {
+    auto port = serial_driver_->port();
+    size_t bytes_transmit_size = port->send(frame);
+    if (debug) {
+      print_hex("Sent", frame, bytes_transmit_size);
     }
-    RCLCPP_INFO(this->get_logger(), "Sent %ld bytes: [%s]", bytes_transmit_size, ss.str().c_str());
+  } catch (const std::exception &ex) {
+    RCLCPP_ERROR(this->get_logger(), "Error Transmiting from serial port: %s", ex.what());
   }
-  catch(const std::exception &ex)
-  {
-    RCLCPP_ERROR(this->get_logger(), "Error Transmiting from serial port:%s",ex.what());
+}
+
+std::vector<uint8_t> AGV_PRO::read_serial_response(const std::vector<uint8_t>& expected_header, size_t payload_size, double timeout_sec)
+{
+  auto port = serial_driver_->port();
+  std::vector<uint8_t> sliding_buf;
+  uint8_t byte = 0;
+
+  rclcpp::Time start_time = this->now();
+  rclcpp::Duration timeout = rclcpp::Duration::from_seconds(timeout_sec);
+
+  while ((this->now() - start_time) < timeout) {
+    std::vector<uint8_t> temp_buf(1);
+    if (port->receive(temp_buf) == 1) {
+      byte = temp_buf[0];
+      sliding_buf.push_back(byte);
+
+      if (sliding_buf.size() > expected_header.size()) {
+        sliding_buf.erase(sliding_buf.begin());
+      }
+
+      if (sliding_buf == expected_header) {
+        break;
+      }
+    }
   }
 
+  if (sliding_buf != expected_header) {
+    RCLCPP_WARN(this->get_logger(), "Timeout waiting for header");
+    return {};
+  }
+
+  size_t remain_len = payload_size + 2;
+  std::vector<uint8_t> remain_buf(remain_len);
+  if (port->receive(remain_buf) != remain_len) {
+    RCLCPP_WARN(this->get_logger(), "Timeout or incomplete data payload");
+    return {};
+  }
+
+  std::vector<uint8_t> full_buf = expected_header;
+  full_buf.insert(full_buf.end(), remain_buf.begin(), remain_buf.end());
+
+  return full_buf;
+}
+
+void AGV_PRO::is_power_on(){
+  auto power_query_frame = build_serial_frame(0x12, {});
+  send_serial_frame(power_query_frame,true);
+
+  const std::vector<uint8_t> expected_header = {0xFE, 0xFE, 0x0B, 0x12};
+  auto power_query_response = read_serial_response(expected_header, 8, 1.0);
+
+  print_hex("recv_buf", power_query_response);
+  
+  if (power_query_response.size() != 14) return;
+
+  uint16_t received_crc = (power_query_response[12] << 8) | power_query_response[13];
+  uint16_t computed_crc = crc16_ibm(power_query_response.data(), 12);
+  if (received_crc != computed_crc) {
+    RCLCPP_WARN(this->get_logger(), "CRC mismatch: received=0x%04X, expected=0x%04X", received_crc, computed_crc);
+    return;
+  }
+
+  int is_poweron_status = static_cast<int8_t>(power_query_response[4]);
+  RCLCPP_INFO(this->get_logger(), "is_poweron_status: %d", is_poweron_status);
+
+  if (is_poweron_status == 0){
+    auto status_query_frame = build_serial_frame(0x10, {});
+    send_serial_frame(status_query_frame,true);
+
+    rclcpp::sleep_for(std::chrono::milliseconds(1000));// Sleep for 1000 milliseconds to allow the device enough time to process the previous command
+
+    const std::vector<uint8_t> expected_header = {0xFE, 0xFE, 0x0B, 0x10};
+    auto status_query_response = read_serial_response(expected_header, 8, 5.0);// Read the serial response with the specified expected header, payload size, and timeout of 5 seconds
+    print_hex("recv_buf", status_query_response);
+  
+    if (status_query_response.size() != 14) return;
+
+    uint16_t received_crc = (status_query_response[12] << 8) | status_query_response[13];
+    uint16_t computed_crc = crc16_ibm(status_query_response.data(), 12);
+    if (received_crc != computed_crc) {
+      RCLCPP_WARN(this->get_logger(), "CRC mismatch: received=0x%04X, expected=0x%04X", received_crc, computed_crc);
+      return;
+    }
+
+    int poweron_status = static_cast<int8_t>(status_query_response[4]);
+    std::string status_msg;
+
+    switch (poweron_status) {
+      case 1:
+        status_msg = "Motor is operating normally.";
+        RCLCPP_INFO(this->get_logger(), "power_status: %d, %s", poweron_status, status_msg.c_str());
+        break;
+      case 2:
+        status_msg = "Emergency stop button is not released.";
+        RCLCPP_ERROR(this->get_logger(), "power_status: %d, %s", poweron_status, status_msg.c_str());
+        break;
+      case 3:
+        status_msg = "Battery voltage is below 19.5V.";
+        RCLCPP_ERROR(this->get_logger(), "power_status: %d, %s", poweron_status, status_msg.c_str());
+        break;
+      case 4:
+        status_msg = "CAN initialization error.";
+        RCLCPP_ERROR(this->get_logger(), "power_status: %d, %s", poweron_status, status_msg.c_str());
+        break;
+      case 5:
+        status_msg = "Motor initialization error.";
+        RCLCPP_ERROR(this->get_logger(), "power_status: %d, %s", poweron_status, status_msg.c_str());
+        break;
+      default:
+        RCLCPP_WARN(this->get_logger(), "power_status: %d, Unknown power status code", poweron_status);
+        break;
+    }
+  }
+  else
+    RCLCPP_INFO(this->get_logger(), "Motor is operating normally.");
+}
+
+void AGV_PRO::set_auto_report(){
+  auto frame = build_serial_frame(0x23, {0x01});
+  send_serial_frame(frame,true);
 }
 
 void AGV_PRO::cmdCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
@@ -95,17 +225,7 @@ void AGV_PRO::cmdCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
   try
   {
     port->send(data_vec);
-
-    //debug************************************
-    // size_t bytes_transmit_size = port->send(data_vec);
-    // std::stringstream ss;
-    // for (auto b : data_vec) {
-    //   ss << std::hex << std::uppercase << std::setfill('0') << std::setw(2)
-    //      << static_cast<int>(b) << " ";
-    // }
-    // RCLCPP_INFO(this->get_logger(), "Sent %ld bytes: [%s]", bytes_transmit_size, ss.str().c_str());
-    //debug************************************
-
+    // print_hex("Sent", data_vec);//debug
   }
   catch(const std::exception &ex)
   {
@@ -154,14 +274,7 @@ bool AGV_PRO::readData()
   recv_buf.push_back(0x0B);
   recv_buf.insert(recv_buf.end(), data_buf.begin(), data_buf.end());
   
-  //debug************************************
-  // std::stringstream ss;
-  // for (const auto& byte : recv_buf) {
-  //     ss << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
-  //       << static_cast<int>(byte) << " ";
-  // }
-  // RCLCPP_INFO(this->get_logger(), "recv_buf: [%s]", ss.str().c_str());
-  //debug************************************
+  // print_hex("recv_buf", recv_buf); //debug
 
   if (recv_buf[3] != 0x25) {
     // RCLCPP_WARN(this->get_logger(), "Command error:0x%02X", recv_buf[2]);
@@ -305,6 +418,7 @@ AGV_PRO::AGV_PRO(std::string node_name):rclcpp::Node(node_name)
     RCLCPP_INFO(this->get_logger(), "Using device: %s", serial_driver_->port().get()->device_name().c_str());
     RCLCPP_INFO(this->get_logger(), "Baud_rate: %d", config.get_baud_rate());
 
+    AGV_PRO::is_power_on();
     AGV_PRO::set_auto_report();
   }
   catch (const std::exception &ex){
@@ -316,6 +430,7 @@ AGV_PRO::AGV_PRO(std::string node_name):rclcpp::Node(node_name)
   std::chrono::milliseconds(20),
   std::bind(&AGV_PRO::Control, this)
   );
+  RCLCPP_INFO(this->get_logger(), "Control timer started");
 
 }
 

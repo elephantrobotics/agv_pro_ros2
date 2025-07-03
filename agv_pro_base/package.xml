@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>agv_pro_base</name>
-  <version>1.0.2</version>
+  <version>1.0.3</version>
   <description>Control Nodes for AGV Pro</description>
   <maintainer email="weijun.xie@elephantrobotics.com">lanni</maintainer>
   <license>BSD-3-Clause license</license>
