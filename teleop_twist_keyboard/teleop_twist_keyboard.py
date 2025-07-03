@@ -141,7 +141,9 @@ def main():
     stamped = node.declare_parameter('stamped', False).value
     frame_id = node.declare_parameter('frame_id', '').value
     speed = node.declare_parameter('speed', 0.25).value
-    turn = node.declare_parameter('turn', 0.5).value    
+    turn = node.declare_parameter('turn', 0.5).value
+    speed_limit = node.declare_parameter('speed_limit', 1.5).value
+    turn_limit = node.declare_parameter('turn_limit', 1.5).value    
     if not stamped and frame_id:
         raise Exception("'frame_id' can only be set when 'stamped' is True")
 
@@ -181,8 +183,13 @@ def main():
                 z = moveBindings[key][2]
                 th = moveBindings[key][3]
             elif key in speedBindings.keys():
-                speed = speed * speedBindings[key][0]
-                turn = turn * speedBindings[key][1]
+                speed = min(speed_limit, speed * speedBindings[key][0])
+                turn = min(turn_limit, turn * speedBindings[key][1])
+
+                if speed == speed_limit:
+                    print("Linear speed limit reached!")
+                if turn == turn_limit:
+                    print("Angular speed limit reached!")
 
                 print(vels(speed, turn))
                 if (status == 14):
