@@ -1,6 +1,10 @@
 # AGV_Pro
 ROS2 packages for AGV_Pro
 
+![agvpro_1](https://github.com/user-attachments/assets/a406ae13-b685-48a5-bcb8-6b654809eb43)
+
+![agvpro_2](https://github.com/user-attachments/assets/dd0ed80f-9d7d-4e10-a951-e84a0b311daa)
+
 > Software environment for Jetson Orin Nano
 
 ```
@@ -49,4 +53,6 @@ cd ..
 
 colcon build
 ```
+# User manual
 
+https://github.com/elephantrobotics/myagvPro_docs/tree/main/MYAGV_PRO_EN/6-SDKDevelopment/6.2-ApplicationBaseROS2
