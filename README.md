@@ -45,7 +45,7 @@ source ~/agv_pro_ros2/install/local_setup.bash
 # Update to new version
 
 ```
-cd ~/myagv_ros2/src
+cd ~/agv_pro_ros2/src
 
 git pull
 
