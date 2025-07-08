@@ -62,11 +62,19 @@ colcon build
 # Start
 
 ```
-ros2 launch agv_pro_description agv_pro_gazebo.launch.py
+ros2 launch agv_pro_gazebo agv_pro_gazebo.launch.py
 ```
 
 # keyboard Control
 
 ```
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
+# Synchronous motion
+
+```
+ros2 launch agv_pro_bringup agv_pro_bringup.launch.py
+ros2 launch agv_pro_gazebo agv_pro_gazebo.launch.py
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
