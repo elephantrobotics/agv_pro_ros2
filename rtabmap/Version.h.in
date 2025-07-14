@@ -1,0 +1,106 @@
+/*
+Copyright (c) 2010-2014, Mathieu Labbe - IntRoLab - Universite de Sherbrooke
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+    * Neither the name of the Universite de Sherbrooke nor the
+      names of its contributors may be used to endorse or promote products
+      derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL UNIVERTY DE SHERBROOKE BE LIABLE FOR ANY
+DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+ 
+#ifndef VERSION_H_
+#define VERSION_H_
+
+// This is auto-generated!
+#define RTABMAP_VERSION "@PROJECT_VERSION@"
+
+#define RTABMAP_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define RTABMAP_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define RTABMAP_VERSION_PATCH @PROJECT_VERSION_PATCH@
+
+#define RTABMAP_VERSION_COMPARE(major, minor, patch)  (major>=@PROJECT_VERSION_MAJOR@ || (major==@PROJECT_VERSION_MAJOR@ && minor>=@PROJECT_VERSION_MINOR@) || (major==@PROJECT_VERSION_MAJOR@ && minor==@PROJECT_VERSION_MINOR@ && patch >=@PROJECT_VERSION_PATCH@))
+
+@NONFREE@#define RTABMAP_NONFREE
+@TORO@#define RTABMAP_TORO
+@G2O@#define RTABMAP_G2O
+@G2O_CPP_CONF@#define RTABMAP_G2O_CPP11 @G2O_CPP11@
+@GTSAM@#define RTABMAP_GTSAM
+@CERES@#define RTABMAP_CERES
+@MRPT@#define RTABMAP_MRPT
+@VERTIGO@#define RTABMAP_VERTIGO
+@OPENNI@#define RTABMAP_OPENNI
+@OPENNI2@#define RTABMAP_OPENNI2
+@FREENECT@#define RTABMAP_FREENECT
+@FREENECT2@#define RTABMAP_FREENECT2
+@K4W2@#define RTABMAP_K4W2
+@K4A@#define RTABMAP_K4A
+@CVSBA@#define RTABMAP_CVSBA
+@POINTMATCHER@#define RTABMAP_POINTMATCHER
+@CCCORELIB@#define RTABMAP_CCCORELIB
+@OPEN3D@#define RTABMAP_OPEN3D
+@FASTCV@#define RTABMAP_FASTCV
+@OPENGV@#define RTABMAP_OPENGV
+@PDAL@#define RTABMAP_PDAL
+@LIBLAS@#define RTABMAP_LIBLAS
+@CUDASIFT@#define RTABMAP_CUDASIFT
+@LOAM@#define RTABMAP_LOAM
+@FLOAM@#define RTABMAP_FLOAM
+@DC1394@#define RTABMAP_DC1394
+@FLYCAPTURE2@#define RTABMAP_FLYCAPTURE2
+@ZED@#define RTABMAP_ZED
+@ZEDOC@#define RTABMAP_ZEDOC
+@REALSENSE@#define RTABMAP_REALSENSE
+@REALSENSESLAM@#define RTABMAP_REALSENSE_SLAM
+@REALSENSE2@#define RTABMAP_REALSENSE2
+@MYNTEYE@#define RTABMAP_MYNTEYE
+@DEPTHAI@#define RTABMAP_DEPTHAI
+@XVSDK@#define RTABMAP_XVSDK
+@OCTOMAP@#define RTABMAP_OCTOMAP
+@GRIDMAP@#define RTABMAP_GRIDMAP
+@CPUTSDF@#define RTABMAP_CPUTSDF
+@ALICE_VISION@#define RTABMAP_ALICE_VISION
+@OPENCHISEL@#define RTABMAP_OPENCHISEL
+@FOVIS@#define RTABMAP_FOVIS
+@VISO2@#define RTABMAP_VISO2
+@DVO@#define RTABMAP_DVO
+@OKVIS@#define RTABMAP_OKVIS
+@MSCKF_VIO@#define RTABMAP_MSCKF_VIO
+@VINS@#define RTABMAP_VINS
+@OPENVINS@#define RTABMAP_OPENVINS
+@ORB_SLAM@#define RTABMAP_ORB_SLAM @ORB_SLAM_VERSION@
+@ORB_OCTREE@#define RTABMAP_ORB_OCTREE
+@TORCH@#define RTABMAP_TORCH
+@PYTHON@#define RTABMAP_PYTHON
+@MADGWICK@#define RTABMAP_MADGWICK
+
+#include <pcl/pcl_config.h>
+
+#if PCL_VERSION_COMPARE(>, 1, 11, 1)
+#include <pcl/types.h>
+#define RTABMAP_PCL_INDEX pcl::index_t
+#elif PCL_VERSION_COMPARE(>=, 1, 10, 0)
+#define RTABMAP_PCL_INDEX std::uint32_t
+#else
+#include <pcl/pcl_macros.h>
+#define RTABMAP_PCL_INDEX pcl::uint32_t
+#endif
+
+#endif /* VERSION_H_ */
+

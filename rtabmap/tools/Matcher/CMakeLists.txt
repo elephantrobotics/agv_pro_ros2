@@ -1,0 +1,7 @@
+
+ADD_EXECUTABLE(matcher main.cpp)
+TARGET_LINK_LIBRARIES(matcher rtabmap_gui)
+
+SET_TARGET_PROPERTIES( matcher 
+  PROPERTIES OUTPUT_NAME ${PROJECT_PREFIX}-matcher)
+ 

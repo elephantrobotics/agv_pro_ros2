@@ -1,0 +1,11 @@
+
+ADD_EXECUTABLE(kitti_dataset main.cpp)
+  
+TARGET_LINK_LIBRARIES(kitti_dataset rtabmap_core)
+
+SET_TARGET_PROPERTIES( kitti_dataset 
+    PROPERTIES OUTPUT_NAME ${PROJECT_PREFIX}-kitti_dataset)
+    
+INSTALL(TARGETS kitti_dataset
+	RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT runtime
+	BUNDLE DESTINATION "${CMAKE_BUNDLE_LOCATION}" COMPONENT runtime)

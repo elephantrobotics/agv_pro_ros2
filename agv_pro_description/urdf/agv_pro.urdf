@@ -212,4 +212,13 @@
     <parent link="${namespace}base_link" />
     <child link="${namespace}laser_link" />
   </joint>
+
+  <link name="${namespace}camera_link"/>
+
+  <joint name="${namespace}camera_joint" type="fixed">
+    <origin xyz="0.23191 0 0.14928" rpy="0 0 0" />
+    <parent link="${namespace}base_link" />
+    <child link="${namespace}camera_link" />
+  </joint>
+
 </robot>

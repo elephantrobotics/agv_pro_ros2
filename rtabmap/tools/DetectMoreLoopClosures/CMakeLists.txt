@@ -1,0 +1,13 @@
+
+ADD_EXECUTABLE(detectMoreLoopClosures main.cpp)
+  
+TARGET_LINK_LIBRARIES(detectMoreLoopClosures rtabmap_core)
+
+SET_TARGET_PROPERTIES( detectMoreLoopClosures 
+  PROPERTIES OUTPUT_NAME ${PROJECT_PREFIX}-detectMoreLoopClosures)
+
+INSTALL(TARGETS detectMoreLoopClosures
+		RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT runtime
+		BUNDLE DESTINATION "${CMAKE_BUNDLE_LOCATION}" COMPONENT runtime)
+
+

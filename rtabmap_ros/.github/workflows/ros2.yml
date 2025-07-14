@@ -1,0 +1,43 @@
+
+name: ros2
+
+on:
+  push:
+    branches: [ ros2 ]
+  pull_request:
+    branches: [ ros2 ]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    name: Build ros2 ${{ matrix.ros_distro }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ros_distro: [humble, jazzy, kilted]
+        include:
+        - ros_distro: humble
+          skip_keys: ''
+        - ros_distro: jazzy
+          skip_keys: ''
+        - ros_distro: kilted
+          skip_keys: 'nav2_bringup nav2_msgs'
+      fail-fast: false
+    container:
+      image: osrf/ros:${{ matrix.ros_distro }}-desktop-full
+    steps:   
+    - uses: actions/checkout@v4
+    - uses: ros-tooling/setup-ros@v0.7
+      with:
+        required-ros-distributions: ${{ matrix.ros_distro }}
+    - run: |
+        echo "repositories:\n  introlab/rtabmap:\n    type: git\n    url: https://github.com/introlab/rtabmap.git\n    version: master\n" > /tmp/deps.repos &&\
+        cat /tmp/deps.repos
+    - uses: ros-tooling/action-ros-ci@v0.4
+      with:
+        package-name: rtabmap_ros
+        target-ros2-distro: ${{ matrix.ros_distro }}
+        vcs-repo-file-url: /tmp/deps.repos
+        rosdep-skip-keys: "${{ matrix.skip_keys }}"
