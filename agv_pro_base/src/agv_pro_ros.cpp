@@ -55,65 +55,87 @@ void AGV_PRO::send_serial_frame(const std::vector<uint8_t>& frame, bool debug)
   }
 }
 
+// std::vector<uint8_t> AGV_PRO::read_serial_response(
+//   const std::vector<uint8_t>& expected_header,
+//   size_t payload_size,
+//   double timeout_sec)
+// {
+//   boost::system::error_code ec;
+//   std::vector<uint8_t> sliding_buf;
+//   uint8_t byte = 0;
+
+//   while (true) {
+//     size_t ret = boost::asio::read(*serial_port_, boost::asio::buffer(&byte, 1), ec);
+//     if (ec) {
+//       RCLCPP_WARN(this->get_logger(), "Serial read error: %s", ec.message().c_str());
+//       break;
+//     }
+
+//     if (ret > 0) {
+//       sliding_buf.push_back(byte);
+//       RCLCPP_INFO(this->get_logger(), "Recv: 0x%02X", byte);
+//       if (sliding_buf.size() > 1024) {
+//         sliding_buf.clear();
+//       }
+//     }
+//   }
+// }
+
 std::vector<uint8_t> AGV_PRO::read_serial_response(
   const std::vector<uint8_t>& expected_header,
   size_t payload_size,
   double timeout_sec)
 {
-  std::vector<uint8_t> sliding_buf;
+  std::vector<uint8_t> buffer;
   uint8_t byte = 0;
 
   rclcpp::Time start_time = this->now();
   rclcpp::Duration timeout = rclcpp::Duration::from_seconds(timeout_sec);
 
-  while ((this->now() - start_time) < timeout) {
+  while (rclcpp::ok()) {
     boost::asio::mutable_buffers_1 buf(&byte, 1);
     boost::system::error_code ec;
-    size_t n = serial_port_->read_some(buf, ec);
+    size_t len = serial_port_->read_some(boost::asio::buffer(&byte,1), ec);
     if (ec) {
         RCLCPP_WARN(this->get_logger(), "Serial read error: %s", ec.message().c_str());
-        return {};
+        break;
     }
-    if (n == 1) {
-      sliding_buf.push_back(byte);
-      if (sliding_buf.size() > expected_header.size()) {
-          sliding_buf.erase(sliding_buf.begin());
+    if (len > 0) {
+      buffer.push_back(byte);
+      //**log */
+      RCLCPP_INFO(this->get_logger(), "recv byte: 0x%02X", byte);
+      std::string buf_str;
+      for (auto b : buffer) {
+          char tmp[5];
+          snprintf(tmp, sizeof(tmp), "%02X ", b);
+          buf_str += tmp;
       }
-      if (sliding_buf == expected_header) {
-          break;
+      std::string header_str;
+      for (auto b : expected_header) {
+          char tmp[5];
+          snprintf(tmp, sizeof(tmp), "%02X ", b);
+          header_str += tmp;
+      }
+      RCLCPP_INFO(this->get_logger(), "buffer: %s", buf_str.c_str());
+      RCLCPP_INFO(this->get_logger(), "expected_header: %s", header_str.c_str());
+      //**log */
+      if (buffer.size() >= expected_header.size()) {
+        bool match = true;
+        for (size_t i=0;i<expected_header.size();i++){
+            if (buffer[buffer.size()-expected_header.size()+i] != expected_header[i]){
+                match=false; break;
+            }
+        }
+        if (match) break;
       }
     }
   }
-  
-  if (sliding_buf != expected_header) {
-    RCLCPP_WARN(this->get_logger(), "Timeout waiting for header");
-    return {};
+  if (buffer.empty()) {
+      RCLCPP_WARN(this->get_logger(), "No data received within timeout!");
+  } else {
+      RCLCPP_INFO(this->get_logger(), "Final buffer size=%zu", buffer.size());
   }
-
-  size_t remain_len = payload_size + 2;
-  std::vector<uint8_t> remain_buf(remain_len);
-  size_t total_read = 0;
-
-  while (total_read < remain_len && (this->now() - start_time) < timeout) {
-    boost::asio::mutable_buffers_1 buf(&remain_buf[total_read], remain_len - total_read);
-    boost::system::error_code ec;
-    size_t n = serial_port_->read_some(buf, ec);
-    if (ec) {
-        RCLCPP_WARN(this->get_logger(), "Serial read error: %s", ec.message().c_str());
-        return {};
-    }
-    total_read += n;
-  }
-
-  if (total_read != remain_len) {
-    RCLCPP_WARN(this->get_logger(), "Timeout or incomplete data payload");
-    return {};
-  }
-
-  std::vector<uint8_t> full_buf = expected_header;
-  full_buf.insert(full_buf.end(), remain_buf.begin(), remain_buf.end());
-
-  return full_buf;
+  return buffer;
 }
 
 bool AGV_PRO::is_power_on(){
@@ -121,7 +143,6 @@ bool AGV_PRO::is_power_on(){
   send_serial_frame(power_query_frame,true);
 
   const std::vector<uint8_t> expected_header = {0xFE, 0xFE, 0x0B, 0x12};
-  RCLCPP_INFO(this->get_logger(),"1111111");
   auto power_query_response = read_serial_response(expected_header, 8, 12.0);
 
   print_hex("recv_buf", power_query_response);
@@ -198,7 +219,7 @@ void AGV_PRO::set_auto_report(bool enable){
 }
 
 void AGV_PRO::clearSerialBuffer(int fd) {
-  if (::tcflush(fd, TCIOFLUSH) != 0) {
+  if (tcflush(fd, TCIOFLUSH) < 0) {
     RCLCPP_WARN(this->get_logger(), "Failed to flush serial buffer: %s", std::strerror(errno));
   } else {
     RCLCPP_INFO(this->get_logger(), "Serial buffer flushed.");
@@ -292,8 +313,8 @@ bool AGV_PRO::readData()
       return false;
   }
 
-  if (buf_length[0] != RECEIVE_FRAME_SIZE-6) {
-    RCLCPP_ERROR(this->get_logger(), "The received length is incorrect:%u", buf_length[0]);
+  if (buf_length[0] != RECEIVE_PAYLOAD_SIZE) {
+    //RCLCPP_ERROR(this->get_logger(), "The received length is incorrect:%u", buf_length[0]);
     return false;
   }
 
@@ -307,13 +328,13 @@ bool AGV_PRO::readData()
   std::vector<uint8_t> recv_buf;
   recv_buf.push_back(0xFE);
   recv_buf.push_back(0xFE);
-  recv_buf.push_back(RECEIVE_FRAME_SIZE-6);
+  recv_buf.push_back(0x1C);
   recv_buf.insert(recv_buf.end(), data_buf.begin(), data_buf.end());
   
-  // print_hex("recv_buf", recv_buf); //debug
+  //print_hex("recv_buf", recv_buf); //debug
 
   if (recv_buf[3] != 0x25) {
-    // RCLCPP_WARN(this->get_logger(), "Command error:0x%02X", recv_buf[2]);
+    //RCLCPP_WARN(this->get_logger(), "Command error:0x%02X", recv_buf[2]); //debug
     return false;
   }
 
@@ -334,6 +355,18 @@ bool AGV_PRO::readData()
   battery_voltage = static_cast<float>(recv_buf[9]) / 10.0f;
   enable_status = recv_buf[10];
 
+  imu_data.linear_acceleration.x = static_cast<double>((static_cast<int16_t>(recv_buf[11]) << 8) | recv_buf[12]) * 0.01;
+  imu_data.linear_acceleration.y = static_cast<double>((static_cast<int16_t>(recv_buf[13]) << 8) | recv_buf[14]) * 0.01;
+  imu_data.linear_acceleration.z = static_cast<double>((static_cast<int16_t>(recv_buf[15]) << 8) | recv_buf[16]) * 0.01;
+
+  imu_data.angular_velocity.x = static_cast<double>((static_cast<int16_t>(recv_buf[17]) << 8) | recv_buf[18]) * 0.01;
+  imu_data.angular_velocity.y = static_cast<double>((static_cast<int16_t>(recv_buf[19]) << 8) | recv_buf[20]) * 0.01;
+  imu_data.angular_velocity.z = static_cast<double>((static_cast<int16_t>(recv_buf[21]) << 8) | recv_buf[22]) * 0.01;
+
+  roll  = static_cast<double>((static_cast<int16_t>(recv_buf[23]) << 8) | recv_buf[24]) * 0.01;
+  pitch = static_cast<double>((static_cast<int16_t>(recv_buf[25]) << 8) | recv_buf[26]) * 0.01;
+  yaw   = static_cast<double>((static_cast<int16_t>(recv_buf[27]) << 8) | recv_buf[28]) * 0.01;
+
   return true;
 }
 
@@ -342,6 +375,40 @@ void AGV_PRO::publisherVoltage()
   std_msgs::msg::Float32 voltage_msg,voltage_backup_msg;
   voltage_msg.data = battery_voltage;
   pub_voltage->publish(voltage_msg);
+}
+
+void AGV_PRO::publisherImuSensor()
+{
+  sensor_msgs::msg::Imu ImuSensor;
+
+  ImuSensor.header.stamp = this->get_clock()->now();
+  ImuSensor.header.frame_id = "imu_link";
+
+  tf2::Quaternion qua;
+  qua.setRPY(0, 0, yaw * M_PI / 180.0);
+
+  ImuSensor.orientation.x = qua[0];
+  ImuSensor.orientation.y = qua[1];
+  ImuSensor.orientation.z = qua[2];
+  ImuSensor.orientation.w = qua[3];
+
+  ImuSensor.angular_velocity.x = imu_data.angular_velocity.x;
+  ImuSensor.angular_velocity.y = imu_data.angular_velocity.y;
+  ImuSensor.angular_velocity.z = imu_data.angular_velocity.z;
+
+  ImuSensor.linear_acceleration.x = imu_data.linear_acceleration.x;
+  ImuSensor.linear_acceleration.y = imu_data.linear_acceleration.y;
+  ImuSensor.linear_acceleration.z = imu_data.linear_acceleration.z;
+
+  ImuSensor.orientation_covariance[0] = 1e6;
+  ImuSensor.orientation_covariance[4] = 1e6;
+  ImuSensor.orientation_covariance[8] = 1e-6;
+
+  ImuSensor.angular_velocity_covariance[0] = 1e6;
+  ImuSensor.angular_velocity_covariance[4] = 1e6;
+  ImuSensor.angular_velocity_covariance[8] = 1e-6;
+
+  pub_imu->publish(ImuSensor);
 }
 
 void AGV_PRO::publisherOdom(double dt)
@@ -405,6 +472,7 @@ void AGV_PRO::Control()
     publisherOdom(dt);
     // RCLCPP_INFO(this->get_logger(), "dt:%f", dt);
     publisherVoltage();
+    publisherImuSensor();
   }
 }
 

@@ -14,8 +14,8 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
-#define SEND_DATA_SIZE 14                               // Total bytes in a command frame to ESP32
-#define RECEIVE_FRAME_SIZE 32                           // Total bytes in a frame from ESP32
+#define SEND_DATA_SIZE 14                               // Total bytes in a command frame to ESP32(version>=V1.0.8)
+#define RECEIVE_FRAME_SIZE 31                           // Total bytes in a frame from ESP32(version>=V1.0.8)
 #define RECEIVE_PAYLOAD_SIZE (RECEIVE_FRAME_SIZE - 3)   // Payload length (excluding header)
 
 extern std::array<double, 36> odom_pose_covariance;
@@ -101,6 +101,11 @@ private:
   void publisherVoltage();
 
   /**
+   * @brief ImuSensor publisher
+   */
+  void publisherImuSensor();
+
+  /**
    * @brief Callback for velocity command updates
    * @param[in] msg The Twist message containing desired linear and angular velocities
    */
@@ -168,6 +173,18 @@ private:
   double linearY = 0.0;
   double angularZ = 0.0;
 
+  double ax= 0.0;
+  double ay= 0.0;
+  double az= 0.0;
+
+  double wx= 0.0;
+  double wy= 0.0;
+  double wz= 0.0;
+
+  double roll = 0.0;
+  double pitch = 0.0;
+  double yaw = 0.0;
+
   int is_poweron_status = 0;
   int poweron_status = 0;
 
@@ -200,6 +217,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr pub_voltage;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub;
 
+  sensor_msgs::msg::Imu imu_data;
   std::unique_ptr<tf2_ros::TransformBroadcaster> odomBroadcaster;
 };
 
