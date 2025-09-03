@@ -55,87 +55,65 @@ void AGV_PRO::send_serial_frame(const std::vector<uint8_t>& frame, bool debug)
   }
 }
 
-// std::vector<uint8_t> AGV_PRO::read_serial_response(
-//   const std::vector<uint8_t>& expected_header,
-//   size_t payload_size,
-//   double timeout_sec)
-// {
-//   boost::system::error_code ec;
-//   std::vector<uint8_t> sliding_buf;
-//   uint8_t byte = 0;
-
-//   while (true) {
-//     size_t ret = boost::asio::read(*serial_port_, boost::asio::buffer(&byte, 1), ec);
-//     if (ec) {
-//       RCLCPP_WARN(this->get_logger(), "Serial read error: %s", ec.message().c_str());
-//       break;
-//     }
-
-//     if (ret > 0) {
-//       sliding_buf.push_back(byte);
-//       RCLCPP_INFO(this->get_logger(), "Recv: 0x%02X", byte);
-//       if (sliding_buf.size() > 1024) {
-//         sliding_buf.clear();
-//       }
-//     }
-//   }
-// }
-
 std::vector<uint8_t> AGV_PRO::read_serial_response(
   const std::vector<uint8_t>& expected_header,
   size_t payload_size,
   double timeout_sec)
 {
-  std::vector<uint8_t> buffer;
+  std::vector<uint8_t> sliding_buf;
   uint8_t byte = 0;
 
   rclcpp::Time start_time = this->now();
   rclcpp::Duration timeout = rclcpp::Duration::from_seconds(timeout_sec);
 
-  while (rclcpp::ok()) {
+  while ((this->now() - start_time) < timeout) {
     boost::asio::mutable_buffers_1 buf(&byte, 1);
     boost::system::error_code ec;
-    size_t len = serial_port_->read_some(boost::asio::buffer(&byte,1), ec);
+    size_t n = serial_port_->read_some(buf, ec);
     if (ec) {
         RCLCPP_WARN(this->get_logger(), "Serial read error: %s", ec.message().c_str());
-        break;
+        return {};
     }
-    if (len > 0) {
-      buffer.push_back(byte);
-      //**log */
-      RCLCPP_INFO(this->get_logger(), "recv byte: 0x%02X", byte);
-      std::string buf_str;
-      for (auto b : buffer) {
-          char tmp[5];
-          snprintf(tmp, sizeof(tmp), "%02X ", b);
-          buf_str += tmp;
+    if (n == 1) {
+      sliding_buf.push_back(byte);
+      if (sliding_buf.size() > expected_header.size()) {
+          sliding_buf.erase(sliding_buf.begin());
       }
-      std::string header_str;
-      for (auto b : expected_header) {
-          char tmp[5];
-          snprintf(tmp, sizeof(tmp), "%02X ", b);
-          header_str += tmp;
-      }
-      RCLCPP_INFO(this->get_logger(), "buffer: %s", buf_str.c_str());
-      RCLCPP_INFO(this->get_logger(), "expected_header: %s", header_str.c_str());
-      //**log */
-      if (buffer.size() >= expected_header.size()) {
-        bool match = true;
-        for (size_t i=0;i<expected_header.size();i++){
-            if (buffer[buffer.size()-expected_header.size()+i] != expected_header[i]){
-                match=false; break;
-            }
-        }
-        if (match) break;
+      if (sliding_buf == expected_header) {
+          break;
       }
     }
   }
-  if (buffer.empty()) {
-      RCLCPP_WARN(this->get_logger(), "No data received within timeout!");
-  } else {
-      RCLCPP_INFO(this->get_logger(), "Final buffer size=%zu", buffer.size());
+  
+  if (sliding_buf != expected_header) {
+    RCLCPP_WARN(this->get_logger(), "Timeout waiting for header");
+    return {};
   }
-  return buffer;
+
+  size_t remain_len = payload_size + 2;
+  std::vector<uint8_t> remain_buf(remain_len);
+  size_t total_read = 0;
+
+  while (total_read < remain_len && (this->now() - start_time) < timeout) {
+    boost::asio::mutable_buffers_1 buf(&remain_buf[total_read], remain_len - total_read);
+    boost::system::error_code ec;
+    size_t n = serial_port_->read_some(buf, ec);
+    if (ec) {
+        RCLCPP_WARN(this->get_logger(), "Serial read error: %s", ec.message().c_str());
+        return {};
+    }
+    total_read += n;
+  }
+
+  if (total_read != remain_len) {
+    RCLCPP_WARN(this->get_logger(), "Timeout or incomplete data payload");
+    return {};
+  }
+
+  std::vector<uint8_t> full_buf = expected_header;
+  full_buf.insert(full_buf.end(), remain_buf.begin(), remain_buf.end());
+
+  return full_buf;
 }
 
 bool AGV_PRO::is_power_on(){
@@ -163,7 +141,7 @@ bool AGV_PRO::is_power_on(){
     auto status_query_frame = build_serial_frame(0x10, {});
     send_serial_frame(status_query_frame,true);
 
-    //rclcpp::sleep_for(std::chrono::milliseconds(1000));// Sleep for 1000 milliseconds to allow the device enough time to process the previous command
+    rclcpp::sleep_for(std::chrono::milliseconds(1000));// Sleep for 1000 milliseconds to allow the device enough time to process the previous command
 
     const std::vector<uint8_t> expected_header = {0xFE, 0xFE, 0x0B, 0x10};
     auto status_query_response = read_serial_response(expected_header, 8, 5.0);// Read the serial response with the specified expected header, payload size, and timeout of 5 seconds
@@ -518,6 +496,8 @@ AGV_PRO::AGV_PRO(std::string node_name):rclcpp::Node(node_name)
     int fd = serial_port_->native_handle();
     this->clearSerialBuffer(fd);
     this->disableDTR_RTS(fd);
+
+    rclcpp::sleep_for(std::chrono::milliseconds(3000));//esp32 Restart time
 
     RCLCPP_INFO(this->get_logger(), "Serial port initialized successfully");
     RCLCPP_INFO(this->get_logger(), "Using device: %s", device_name_.c_str());
