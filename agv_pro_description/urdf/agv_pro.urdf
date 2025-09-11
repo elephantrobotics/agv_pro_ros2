@@ -221,4 +221,12 @@
     <child link="${namespace}camera_link" />
   </joint>
 
+  <link name="${namespace}imu_link"/>
+
+  <joint name="${namespace}imu_joint" type="fixed">
+    <origin xyz="-0.17181 -0.0270532 0.14928" rpy="0 0 1.5707" />
+    <parent link="${namespace}base_link" />
+    <child link="${namespace}imu_link" />
+  </joint>
+
 </robot>
