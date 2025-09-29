@@ -1,22 +1,6 @@
 #include "agv_pro_base/agv_pro_driver.h"
 
-std::array<double, 36> odom_pose_covariance = {
-  {1e-9, 0, 0, 0, 0, 0,
-  0, 1e-3, 1e-9, 0, 0, 0,
-  0, 0, 1e6, 0, 0, 0,
-  0, 0, 0, 1e6, 0, 0,
-  0, 0, 0, 0, 1e6, 0,
-  0, 0, 0, 0, 0, 1e-9} };
-
-std::array<double, 36> odom_twist_covariance = {
-  {1e-9, 0, 0, 0, 0, 0,
-  0, 1e-3, 1e-9, 0, 0, 0,
-  0, 0, 1e6, 0, 0, 0,
-  0, 0, 0, 1e6, 0, 0,
-  0, 0, 0, 0, 1e6, 0,
-  0, 0, 0, 0, 0, 1e-9} };
-
-uint16_t crc16_ibm(const uint8_t* data, size_t length) {
+uint16_t AGV_PRO::crc16_ibm(const uint8_t* data, size_t length) {
   uint16_t crc = 0xFFFF;
   for (size_t i = 0; i < length; ++i) {
     crc ^= static_cast<uint16_t>(data[i]);
@@ -32,7 +16,7 @@ uint16_t crc16_ibm(const uint8_t* data, size_t length) {
 
 std::vector<uint8_t> AGV_PRO::build_serial_frame(uint8_t cmd_id, const std::vector<uint8_t>& payload)
 {
-  std::vector<uint8_t> frame(RECEIVE_DATA_SIZE, 0x00);
+  std::vector<uint8_t> frame(SEND_DATA_SIZE, 0x00);
   frame[0] = 0xFE;
   frame[1] = 0xFE;
   frame[2] = 0x0B;
@@ -62,8 +46,7 @@ void AGV_PRO::print_hex(const std::string& label, const std::vector<uint8_t>& da
 void AGV_PRO::send_serial_frame(const std::vector<uint8_t>& frame, bool debug)
 {
   try {
-    auto port = serial_driver_->port();
-    size_t bytes_transmit_size = port->send(frame);
+    size_t bytes_transmit_size = boost::asio::write(*serial_port_, boost::asio::buffer(frame));
     if (debug) {
       print_hex("Sent", frame, bytes_transmit_size);
     }
@@ -72,9 +55,11 @@ void AGV_PRO::send_serial_frame(const std::vector<uint8_t>& frame, bool debug)
   }
 }
 
-std::vector<uint8_t> AGV_PRO::read_serial_response(const std::vector<uint8_t>& expected_header, size_t payload_size, double timeout_sec)
+std::vector<uint8_t> AGV_PRO::read_serial_response(
+  const std::vector<uint8_t>& expected_header,
+  size_t payload_size,
+  double timeout_sec)
 {
-  auto port = serial_driver_->port();
   std::vector<uint8_t> sliding_buf;
   uint8_t byte = 0;
 
@@ -82,21 +67,24 @@ std::vector<uint8_t> AGV_PRO::read_serial_response(const std::vector<uint8_t>& e
   rclcpp::Duration timeout = rclcpp::Duration::from_seconds(timeout_sec);
 
   while ((this->now() - start_time) < timeout) {
-    std::vector<uint8_t> temp_buf(1);
-    if (port->receive(temp_buf) == 1) {
-      byte = temp_buf[0];
+    boost::asio::mutable_buffers_1 buf(&byte, 1);
+    boost::system::error_code ec;
+    size_t n = serial_port_->read_some(buf, ec);
+    if (ec) {
+        RCLCPP_WARN(this->get_logger(), "Serial read error: %s", ec.message().c_str());
+        return {};
+    }
+    if (n == 1) {
       sliding_buf.push_back(byte);
-
       if (sliding_buf.size() > expected_header.size()) {
-        sliding_buf.erase(sliding_buf.begin());
+          sliding_buf.erase(sliding_buf.begin());
       }
-
       if (sliding_buf == expected_header) {
-        break;
+          break;
       }
     }
   }
-
+  
   if (sliding_buf != expected_header) {
     RCLCPP_WARN(this->get_logger(), "Timeout waiting for header");
     return {};
@@ -104,7 +92,20 @@ std::vector<uint8_t> AGV_PRO::read_serial_response(const std::vector<uint8_t>& e
 
   size_t remain_len = payload_size + 2;
   std::vector<uint8_t> remain_buf(remain_len);
-  if (port->receive(remain_buf) != remain_len) {
+  size_t total_read = 0;
+
+  while (total_read < remain_len && (this->now() - start_time) < timeout) {
+    boost::asio::mutable_buffers_1 buf(&remain_buf[total_read], remain_len - total_read);
+    boost::system::error_code ec;
+    size_t n = serial_port_->read_some(buf, ec);
+    if (ec) {
+        RCLCPP_WARN(this->get_logger(), "Serial read error: %s", ec.message().c_str());
+        return {};
+    }
+    total_read += n;
+  }
+
+  if (total_read != remain_len) {
     RCLCPP_WARN(this->get_logger(), "Timeout or incomplete data payload");
     return {};
   }
@@ -115,22 +116,22 @@ std::vector<uint8_t> AGV_PRO::read_serial_response(const std::vector<uint8_t>& e
   return full_buf;
 }
 
-void AGV_PRO::is_power_on(){
+bool AGV_PRO::is_power_on(){
   auto power_query_frame = build_serial_frame(0x12, {});
   send_serial_frame(power_query_frame,true);
 
   const std::vector<uint8_t> expected_header = {0xFE, 0xFE, 0x0B, 0x12};
-  auto power_query_response = read_serial_response(expected_header, 8, 1.0);
+  auto power_query_response = read_serial_response(expected_header, 8, 12.0);
 
   print_hex("recv_buf", power_query_response);
   
-  if (power_query_response.size() != 14) return;
+  if (power_query_response.size() != 14) return false;
 
   uint16_t received_crc = (power_query_response[12] << 8) | power_query_response[13];
   uint16_t computed_crc = crc16_ibm(power_query_response.data(), 12);
   if (received_crc != computed_crc) {
     RCLCPP_WARN(this->get_logger(), "CRC mismatch: received=0x%04X, expected=0x%04X", received_crc, computed_crc);
-    return;
+    return false;
   }
 
   int is_poweron_status = static_cast<int8_t>(power_query_response[4]);
@@ -146,13 +147,13 @@ void AGV_PRO::is_power_on(){
     auto status_query_response = read_serial_response(expected_header, 8, 5.0);// Read the serial response with the specified expected header, payload size, and timeout of 5 seconds
     print_hex("recv_buf", status_query_response);
   
-    if (status_query_response.size() != 14) return;
+    if (status_query_response.size() != 14) return false;
 
     uint16_t received_crc = (status_query_response[12] << 8) | status_query_response[13];
     uint16_t computed_crc = crc16_ibm(status_query_response.data(), 12);
     if (received_crc != computed_crc) {
       RCLCPP_WARN(this->get_logger(), "CRC mismatch: received=0x%04X, expected=0x%04X", received_crc, computed_crc);
-      return;
+      return false;
     }
 
     int poweron_status = static_cast<int8_t>(status_query_response[4]);
@@ -162,35 +163,59 @@ void AGV_PRO::is_power_on(){
       case 1:
         status_msg = "Motor is operating normally.";
         RCLCPP_INFO(this->get_logger(), "power_status: %d, %s", poweron_status, status_msg.c_str());
-        break;
+        return true;
       case 2:
         status_msg = "Emergency stop button is not released.";
         RCLCPP_ERROR(this->get_logger(), "power_status: %d, %s", poweron_status, status_msg.c_str());
-        break;
+        return false;
       case 3:
         status_msg = "Battery voltage is below 19.5V.";
         RCLCPP_ERROR(this->get_logger(), "power_status: %d, %s", poweron_status, status_msg.c_str());
-        break;
+        return false;
       case 4:
         status_msg = "CAN initialization error.";
         RCLCPP_ERROR(this->get_logger(), "power_status: %d, %s", poweron_status, status_msg.c_str());
-        break;
+        return false;
       case 5:
         status_msg = "Motor initialization error.";
         RCLCPP_ERROR(this->get_logger(), "power_status: %d, %s", poweron_status, status_msg.c_str());
-        break;
+        return false;
       default:
         RCLCPP_WARN(this->get_logger(), "power_status: %d, Unknown power status code", poweron_status);
-        break;
+        return false;
     }
   }
-  else
+  else{
     RCLCPP_INFO(this->get_logger(), "Motor is operating normally.");
+    return true;
+  }
 }
 
-void AGV_PRO::set_auto_report(){
-  auto frame = build_serial_frame(0x23, {0x01});
+void AGV_PRO::set_auto_report(bool enable){
+  auto frame = build_serial_frame(0x23, {static_cast<uint8_t>(enable)});
   send_serial_frame(frame,true);
+}
+
+void AGV_PRO::clearSerialBuffer(int fd) {
+  if (tcflush(fd, TCIOFLUSH) < 0) {
+    RCLCPP_WARN(this->get_logger(), "Failed to flush serial buffer: %s", std::strerror(errno));
+  } else {
+    RCLCPP_INFO(this->get_logger(), "Serial buffer flushed.");
+  }
+}
+
+void AGV_PRO::disableDTR_RTS(int fd) {
+  int status;
+  if (::ioctl(fd, TIOCMGET, &status) == 0) {
+    status &= ~(TIOCM_DTR | TIOCM_RTS);
+    if (::ioctl(fd, TIOCMSET, &status) != 0) {
+      RCLCPP_WARN(this->get_logger(), "Failed to clear DTR and RTS: %s", std::strerror(errno));
+    } else {
+      RCLCPP_INFO(this->get_logger(), "DTR and RTS lines disabled successfully.");
+    }
+  } else {
+    RCLCPP_WARN(this->get_logger(), "Failed to read modem status: %s", std::strerror(errno));
+  }
 }
 
 void AGV_PRO::cmdCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
@@ -220,11 +245,9 @@ void AGV_PRO::cmdCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 
   std::vector<uint8_t> data_vec(buf, buf + sizeof(buf));
 
-  auto port = serial_driver_->port();
-
   try
   {
-    port->send(data_vec);
+    boost::asio::write(*serial_port_,boost::asio::buffer(data_vec));
     // print_hex("Sent", data_vec);//debug
   }
   catch(const std::exception &ex)
@@ -235,34 +258,46 @@ void AGV_PRO::cmdCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 
 bool AGV_PRO::readData()
 {
-  std::vector<uint8_t> buf_header(1);
   std::vector<uint8_t> buf_length(1);
-  std::vector<uint8_t> data_buf(RECEIVE_DATA_SIZE-3);
+  std::vector<uint8_t> data_buf(RECEIVE_PAYLOAD_SIZE);
 
-  auto port = serial_driver_->port();
+  uint8_t byte = 0;
+  boost::system::error_code ec;
   
   while (true)
   {
-    size_t ret = port->receive(buf_header);
-    if (ret != 1 || buf_header[0] != 0xfe) {
+    size_t ret = boost::asio::read(*serial_port_, boost::asio::buffer(&byte, 1), ec);
+    if (ec) {
+      RCLCPP_ERROR(this->get_logger(), "Serial read error: %s", ec.message().c_str());
+      return false;
+    }
+    if (ret != 1 || byte != 0xfe) {
       continue;
     }
 
-    ret = port->receive(buf_header);
-    if (ret == 1 && buf_header[0] == 0xfe) {
+    ret = boost::asio::read(*serial_port_, boost::asio::buffer(&byte, 1), ec);
+    if (ec) {
+      RCLCPP_ERROR(this->get_logger(), "Serial read error: %s", ec.message().c_str());
+      return false;
+    }
+    if (ret == 1 && byte == 0xfe) {
       break; 
     }
   }
 
-  size_t ret = port->receive(buf_length);
+  size_t ret = boost::asio::read(*serial_port_, boost::asio::buffer(buf_length), ec);
+  if (ec) {
+      RCLCPP_ERROR(this->get_logger(), "Serial read error: %s", ec.message().c_str());
+      return false;
+  }
 
-  if (buf_length[0] != 0x0b) {
-    RCLCPP_ERROR(this->get_logger(), "The received length is incorrect:%u", buf_length[0]);
+  if (buf_length[0] != RECEIVE_PAYLOAD_SIZE) {
+    //RCLCPP_ERROR(this->get_logger(), "The received length is incorrect:%u", buf_length[0]);
     return false;
   }
 
-  ret = port->receive(data_buf);
-  if (ret != data_buf.size())
+  ret = boost::asio::read(*serial_port_, boost::asio::buffer(data_buf), ec);
+  if (ec || ret != data_buf.size())
   {
     RCLCPP_ERROR(this->get_logger(), "Failed to receive full payload");
     return false;
@@ -271,18 +306,18 @@ bool AGV_PRO::readData()
   std::vector<uint8_t> recv_buf;
   recv_buf.push_back(0xFE);
   recv_buf.push_back(0xFE);
-  recv_buf.push_back(0x0B);
+  recv_buf.push_back(0x1C);
   recv_buf.insert(recv_buf.end(), data_buf.begin(), data_buf.end());
   
-  // print_hex("recv_buf", recv_buf); //debug
+  //print_hex("recv_buf", recv_buf); //debug
 
   if (recv_buf[3] != 0x25) {
-    // RCLCPP_WARN(this->get_logger(), "Command error:0x%02X", recv_buf[2]);
+    //RCLCPP_WARN(this->get_logger(), "Command error:0x%02X", recv_buf[2]); //debug
     return false;
   }
 
-  uint16_t received_crc = recv_buf[13] | (recv_buf[12] << 8);
-  uint16_t computed_crc = crc16_ibm(recv_buf.data(), 12);
+  uint16_t received_crc = recv_buf[RECEIVE_FRAME_SIZE-1] | (recv_buf[RECEIVE_FRAME_SIZE-2] << 8);
+  uint16_t computed_crc = crc16_ibm(recv_buf.data(), RECEIVE_FRAME_SIZE-2);
 
   if (received_crc != computed_crc) {
     RCLCPP_WARN(this->get_logger(), "CRC error: received 0x%04X, calculated 0x%04X", received_crc, computed_crc);
@@ -298,6 +333,18 @@ bool AGV_PRO::readData()
   battery_voltage = static_cast<float>(recv_buf[9]) / 10.0f;
   enable_status = recv_buf[10];
 
+  imu_data.linear_acceleration.x = static_cast<double>((static_cast<int16_t>(recv_buf[11]) << 8) | recv_buf[12]) * 0.01;
+  imu_data.linear_acceleration.y = static_cast<double>((static_cast<int16_t>(recv_buf[13]) << 8) | recv_buf[14]) * 0.01;
+  imu_data.linear_acceleration.z = static_cast<double>((static_cast<int16_t>(recv_buf[15]) << 8) | recv_buf[16]) * 0.01;
+
+  imu_data.angular_velocity.x = static_cast<double>((static_cast<int16_t>(recv_buf[17]) << 8) | recv_buf[18]) * 0.01;
+  imu_data.angular_velocity.y = static_cast<double>((static_cast<int16_t>(recv_buf[19]) << 8) | recv_buf[20]) * 0.01;
+  imu_data.angular_velocity.z = static_cast<double>((static_cast<int16_t>(recv_buf[21]) << 8) | recv_buf[22]) * 0.01;
+
+  roll  = static_cast<double>((static_cast<int16_t>(recv_buf[23]) << 8) | recv_buf[24]) * 0.01;
+  pitch = static_cast<double>((static_cast<int16_t>(recv_buf[25]) << 8) | recv_buf[26]) * 0.01;
+  yaw   = static_cast<double>((static_cast<int16_t>(recv_buf[27]) << 8) | recv_buf[28]) * 0.01;
+
   return true;
 }
 
@@ -306,6 +353,40 @@ void AGV_PRO::publisherVoltage()
   std_msgs::msg::Float32 voltage_msg,voltage_backup_msg;
   voltage_msg.data = battery_voltage;
   pub_voltage->publish(voltage_msg);
+}
+
+void AGV_PRO::publisherImuSensor()
+{
+  sensor_msgs::msg::Imu ImuSensor;
+
+  ImuSensor.header.stamp = this->get_clock()->now();
+  ImuSensor.header.frame_id = "imu_link";
+
+  tf2::Quaternion qua;
+  qua.setRPY(0, 0, yaw * M_PI / 180.0);
+
+  ImuSensor.orientation.x = qua[0];
+  ImuSensor.orientation.y = qua[1];
+  ImuSensor.orientation.z = qua[2];
+  ImuSensor.orientation.w = qua[3];
+
+  ImuSensor.angular_velocity.x = imu_data.angular_velocity.x;
+  ImuSensor.angular_velocity.y = imu_data.angular_velocity.y;
+  ImuSensor.angular_velocity.z = imu_data.angular_velocity.z;
+
+  ImuSensor.linear_acceleration.x = imu_data.linear_acceleration.x;
+  ImuSensor.linear_acceleration.y = imu_data.linear_acceleration.y;
+  ImuSensor.linear_acceleration.z = imu_data.linear_acceleration.z;
+
+  ImuSensor.orientation_covariance[0] = 1e6;
+  ImuSensor.orientation_covariance[4] = 1e6;
+  ImuSensor.orientation_covariance[8] = 1e-6;
+
+  ImuSensor.angular_velocity_covariance[0] = 1e6;
+  ImuSensor.angular_velocity_covariance[4] = 1e6;
+  ImuSensor.angular_velocity_covariance[8] = 1e-6;
+
+  pub_imu->publish(ImuSensor);
 }
 
 void AGV_PRO::publisherOdom(double dt)
@@ -345,12 +426,12 @@ void AGV_PRO::publisherOdom(double dt)
   odom.pose.pose.position.y = y;
   odom.pose.pose.position.z = 0.0;
   odom.pose.pose.orientation = odom_quat;
-  odom.pose.covariance = odom_pose_covariance;
+  odom.pose.covariance = this->odom_pose_covariance;
 
   odom.twist.twist.linear.x = vx;
   odom.twist.twist.linear.y = vy;
   odom.twist.twist.angular.z = vtheta;
-  odom.twist.covariance = odom_twist_covariance;
+  odom.twist.covariance = this->odom_twist_covariance;
 
   pub_odom->publish(odom);
 }
@@ -369,6 +450,7 @@ void AGV_PRO::Control()
     publisherOdom(dt);
     // RCLCPP_INFO(this->get_logger(), "dt:%f", dt);
     publisherVoltage();
+    publisherImuSensor();
   }
 }
 
@@ -401,64 +483,54 @@ AGV_PRO::AGV_PRO(std::string node_name):rclcpp::Node(node_name)
 
   lastTime = this->get_clock()->now();
       
-  drivers::serial_driver::SerialPortConfig config(
-    1000000,
-    drivers::serial_driver::FlowControl::NONE,
-    drivers::serial_driver::Parity::NONE,
-    drivers::serial_driver::StopBits::ONE
-  );
-
   try{
-    io_context_ = std::make_shared<drivers::common::IoContext>(1);
-    serial_driver_ = std::make_shared<drivers::serial_driver::SerialDriver>(*io_context_);
-    serial_driver_->init_port(device_name_, config);
-    serial_driver_->port()->open();
-    
-    RCLCPP_INFO(this->get_logger(), "Serial port initialized successfully");
-    RCLCPP_INFO(this->get_logger(), "Using device: %s", serial_driver_->port().get()->device_name().c_str());
-    RCLCPP_INFO(this->get_logger(), "Baud_rate: %d", config.get_baud_rate());
+    serial_port_ = std::make_unique<boost::asio::serial_port>(io_);
 
-    AGV_PRO::is_power_on();
-    AGV_PRO::set_auto_report();
+    serial_port_->open(device_name_);
+    serial_port_->set_option(boost::asio::serial_port_base::baud_rate(1000000));
+    serial_port_->set_option(boost::asio::serial_port_base::character_size(8));
+    serial_port_->set_option(boost::asio::serial_port_base::parity(boost::asio::serial_port_base::parity::none));
+    serial_port_->set_option(boost::asio::serial_port_base::stop_bits(boost::asio::serial_port_base::stop_bits::one));
+    serial_port_->set_option(boost::asio::serial_port_base::flow_control(boost::asio::serial_port_base::flow_control::none));
+
+    int fd = serial_port_->native_handle();
+    this->clearSerialBuffer(fd);
+    this->disableDTR_RTS(fd);
+
+    rclcpp::sleep_for(std::chrono::milliseconds(3000));//esp32 Restart time
+
+    RCLCPP_INFO(this->get_logger(), "Serial port initialized successfully");
+    RCLCPP_INFO(this->get_logger(), "Using device: %s", device_name_.c_str());
+
+    boost::asio::serial_port_base::baud_rate baud_option;
+    serial_port_->get_option(baud_option);
+    unsigned int current_baud = baud_option.value();
+    RCLCPP_INFO(this->get_logger(), "Baud_rate: %u", current_baud);
   }
   catch (const std::exception &ex){
     RCLCPP_ERROR(this->get_logger(), "Failed to initialize serial port: %s", ex.what());
     return;
   }
-  
-  control_timer_ = this->create_wall_timer(
-  std::chrono::milliseconds(20),
-  std::bind(&AGV_PRO::Control, this)
-  );
-  RCLCPP_INFO(this->get_logger(), "Control timer started");
 
+  if (this->is_power_on()) {
+    this->set_auto_report(1);
+
+    control_timer_ = this->create_wall_timer(
+    std::chrono::milliseconds(20),
+    std::bind(&AGV_PRO::Control, this)
+    );
+    RCLCPP_INFO(this->get_logger(), "Control timer started");
+  }
+  else {
+    RCLCPP_WARN(this->get_logger(), "Control timer not started.");
+  }
 }
 
 AGV_PRO::~AGV_PRO()
-{ 
-  std::array<uint8_t, 14> buf = {
-    0xFE, 0xFE, 0x0b, 0x22, 
-    0x01, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00
-  };
-
-  uint16_t crc = crc16_ibm(buf.data(), 12);
-  buf[12] = (crc >> 8) & 0xff;
-  buf[13] = crc & 0xff;
-
-  std::vector<uint8_t> data_vec(buf.begin(), buf.end());
-
-  auto port = serial_driver_->port();
-
-  try
-  {
-    port->send(data_vec);
-  }
-  catch(const std::exception &ex)
-  {
-    RCLCPP_ERROR(this->get_logger(), "Error Transmiting from serial port:%s",ex.what());
-  }
-
-  serial_driver_->port()->close();
-  RCLCPP_INFO(this->get_logger(),"Shutting down");
+{
+  if (serial_port_ && serial_port_->is_open()) {
+    this->set_auto_report(0);
+    serial_port_->cancel();
+    serial_port_->close();
+  } 
 }
