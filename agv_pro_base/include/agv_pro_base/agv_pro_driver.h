@@ -13,10 +13,18 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <agv_pro_msgs/srv/set_digital_output.hpp>
+#include <agv_pro_msgs/srv/get_digital_input.hpp>
 
 #define SEND_DATA_SIZE 14                               // Total bytes in a command frame to ESP32(version>=V1.0.8)
 #define RECEIVE_FRAME_SIZE 31                           // Total bytes in a frame from ESP32(version>=V1.0.8)
 #define RECEIVE_PAYLOAD_SIZE (RECEIVE_FRAME_SIZE - 3)   // Payload length (excluding header)
+
+#define POWER_ON 0x10
+#define GET_POWER_STATE 0x12
+#define SET_AUTO_REPORT_STATE 0x23
+#define SET_OUTPUT_IO 0x40
+#define GET_INPUT_IO 0x41
 
 extern std::array<double, 36> odom_pose_covariance;
 extern std::array<double, 36> odom_twist_covariance;
@@ -152,6 +160,42 @@ private:
    */
   uint16_t crc16_ibm(const uint8_t* data, size_t length);
 
+  /**
+   * @brief Handle the SetDigitalOutput service request.
+   *
+   * This service sets the state (HIGH/LOW) of a specific digital output pin on the AGV device.
+   * The request contains the pin number and desired state, which are sent to the hardware
+   * via the serial interface. The response reports whether the operation succeeded.
+   *
+   * @param[in] request The service request, containing:
+   *   - pin: The digital output pin number.
+   *   - state: Desired output state (true = HIGH, false = LOW).
+   * @param[out] response The service response, containing:
+   *   - success: True if the operation succeeded.
+   *   - message: Optional status or error description.
+   */
+  void handleSetDigitalOutput(
+    const std::shared_ptr<agv_pro_msgs::srv::SetDigitalOutput::Request> request,
+    std::shared_ptr<agv_pro_msgs::srv::SetDigitalOutput::Response> response);
+
+  /**
+   * @brief Handle the GetDigitalInput service request.
+   *
+   * This service reads the state (HIGH/LOW) of a specific digital input pin on the AGV device.
+   * The request specifies the pin number, and the node queries the hardware via the serial
+   * interface to retrieve its current state.
+   *
+   * @param[in] request The service request, containing:
+   *   - pin: The digital input pin number to read.
+   * @param[out] response The service response, containing:
+   *   - state: Current pin state (true = HIGH, false = LOW).
+   *   - success: True if the read operation succeeded.
+   *   - message: Optional status or error description.
+   */
+  void handleGetDigitalInput(
+    const std::shared_ptr<agv_pro_msgs::srv::GetDigitalInput::Request> request,
+    std::shared_ptr<agv_pro_msgs::srv::GetDigitalInput::Response> response);
+
   boost::asio::io_service io_;
   std::unique_ptr<boost::asio::serial_port> serial_port_;
 
@@ -216,6 +260,8 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr pub_voltage;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub;
+  rclcpp::Service<agv_pro_msgs::srv::SetDigitalOutput>::SharedPtr set_output_service;
+  rclcpp::Service<agv_pro_msgs::srv::GetDigitalInput>::SharedPtr get_input_service;
 
   sensor_msgs::msg::Imu imu_data;
   std::unique_ptr<tf2_ros::TransformBroadcaster> odomBroadcaster;

@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>agv_pro_base</name>
-  <version>1.0.3</version>
+  <version>1.0.8</version>
   <description>Control Nodes for AGV Pro</description>
   <maintainer email="weijun.xie@elephantrobotics.com">lanni</maintainer>
   <license>BSD-3-Clause license</license>
@@ -16,6 +16,7 @@
   <depend>asio_cmake_module</depend>
   <depend>io_context</depend>
   <depend>tf2_geometry_msgs</depend>
+  <depend>agv_pro_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>agv_pro_bringup</name>
-  <version>1.0.0</version>
+  <version>1.0.8</version>
   <description>ROS 2 launch scripts for starting the AGV Pro</description>
   <maintainer email="weijun.xie@elephantrobotics.com">lanni</maintainer>
   <license>BSD-3-Clause license</license>

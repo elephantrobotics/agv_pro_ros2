@@ -117,7 +117,7 @@ std::vector<uint8_t> AGV_PRO::read_serial_response(
 }
 
 bool AGV_PRO::is_power_on(){
-  auto power_query_frame = build_serial_frame(0x12, {});
+  auto power_query_frame = build_serial_frame(GET_POWER_STATE, {});
   send_serial_frame(power_query_frame,true);
 
   const std::vector<uint8_t> expected_header = {0xFE, 0xFE, 0x0B, 0x12};
@@ -138,7 +138,7 @@ bool AGV_PRO::is_power_on(){
   RCLCPP_INFO(this->get_logger(), "is_poweron_status: %d", is_poweron_status);
 
   if (is_poweron_status == 0){
-    auto status_query_frame = build_serial_frame(0x10, {});
+    auto status_query_frame = build_serial_frame(POWER_ON, {});
     send_serial_frame(status_query_frame,true);
 
     rclcpp::sleep_for(std::chrono::milliseconds(1000));// Sleep for 1000 milliseconds to allow the device enough time to process the previous command
@@ -256,6 +256,72 @@ void AGV_PRO::cmdCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
   }
 }
 
+void AGV_PRO::handleSetDigitalOutput(
+  const std::shared_ptr<agv_pro_msgs::srv::SetDigitalOutput::Request> request,
+  std::shared_ptr<agv_pro_msgs::srv::SetDigitalOutput::Response> response)
+{
+  uint8_t output_number = request->pin;
+  uint8_t output_state = request->state;
+
+  if (output_number < 1 || output_number > 6){
+    RCLCPP_ERROR(this->get_logger(), "Invalid output pin number: %u", output_number);
+    response->success = false;
+    response->message = "Invalid output pin number";
+    return;
+  }
+
+  auto frame = build_serial_frame(SET_OUTPUT_IO, {output_number, output_state});
+  send_serial_frame(frame, true);
+
+  const std::vector<uint8_t> expected_header = {0xFE, 0xFE, 0x0B, SET_OUTPUT_IO};
+  auto response_frame = read_serial_response(expected_header, 8, 5.0);
+
+  // print_hex("recv_buf", response_frame); //debug
+
+  uint8_t status = response_frame[4];
+  if (status == 0x01) {
+    RCLCPP_INFO(this->get_logger(), "SetDigitalOutput succeeded");
+    response->success = true;
+    response->message = "Success";
+  } else {
+    RCLCPP_ERROR(this->get_logger(), "SetDigitalOutput failed with status: 0x%02X", status);
+    response->success = false;
+    response->message = "Failed with status code";
+  }
+}
+
+void AGV_PRO::handleGetDigitalInput(
+  const std::shared_ptr<agv_pro_msgs::srv::GetDigitalInput::Request> request,
+  std::shared_ptr<agv_pro_msgs::srv::GetDigitalInput::Response> response)
+{
+  uint8_t input_number = request->pin;
+
+  if (input_number < 1 || input_number > 6){
+    RCLCPP_ERROR(this->get_logger(), "Invalid input pin number: %u", input_number);
+    response->success = false;
+    response->message = "Invalid input pin number";
+    return;
+  }
+
+  auto frame = build_serial_frame(GET_INPUT_IO, {input_number});
+  send_serial_frame(frame, true);
+
+  const std::vector<uint8_t> expected_header = {0xFE, 0xFE, 0x0B, GET_INPUT_IO};
+  auto response_frame = read_serial_response(expected_header, 8, 5.0);
+  // print_hex("recv_buf", response_frame); //debug
+
+  uint8_t status = response_frame[5];
+  if (status == 0xff) {
+    RCLCPP_ERROR(this->get_logger(), "GetDigitalInput failed with status: 0x%02X", status);
+    response->success = false;
+  } else {
+    RCLCPP_INFO(this->get_logger(), "GetDigitalInput succeeded, state: %u", status);
+    response->state = static_cast<int32_t>(status);
+    response->success = true;
+    response->message = "Success";
+  }
+}
+
 bool AGV_PRO::readData()
 {
   std::vector<uint8_t> buf_length(1);
@@ -309,7 +375,7 @@ bool AGV_PRO::readData()
   recv_buf.push_back(0x1C);
   recv_buf.insert(recv_buf.end(), data_buf.begin(), data_buf.end());
   
-  //print_hex("recv_buf", recv_buf); //debug
+  // print_hex("recv_buf", recv_buf); //debug
 
   if (recv_buf[3] != 0x25) {
     //RCLCPP_WARN(this->get_logger(), "Command error:0x%02X", recv_buf[2]); //debug
@@ -333,17 +399,29 @@ bool AGV_PRO::readData()
   battery_voltage = static_cast<float>(recv_buf[9]) / 10.0f;
   enable_status = recv_buf[10];
 
-  imu_data.linear_acceleration.x = static_cast<double>((static_cast<int16_t>(recv_buf[11]) << 8) | recv_buf[12]) * 0.01;
-  imu_data.linear_acceleration.y = static_cast<double>((static_cast<int16_t>(recv_buf[13]) << 8) | recv_buf[14]) * 0.01;
-  imu_data.linear_acceleration.z = static_cast<double>((static_cast<int16_t>(recv_buf[15]) << 8) | recv_buf[16]) * 0.01;
+  imu_data.linear_acceleration.x = static_cast<double>(static_cast<int16_t>((recv_buf[11] << 8) | recv_buf[12])) * 0.01;
+  imu_data.linear_acceleration.y = static_cast<double>(static_cast<int16_t>((recv_buf[13] << 8) | recv_buf[14])) * 0.01;
+  imu_data.linear_acceleration.z = static_cast<double>(static_cast<int16_t>((recv_buf[15] << 8) | recv_buf[16])) * 0.01;
 
-  imu_data.angular_velocity.x = static_cast<double>((static_cast<int16_t>(recv_buf[17]) << 8) | recv_buf[18]) * 0.01;
-  imu_data.angular_velocity.y = static_cast<double>((static_cast<int16_t>(recv_buf[19]) << 8) | recv_buf[20]) * 0.01;
-  imu_data.angular_velocity.z = static_cast<double>((static_cast<int16_t>(recv_buf[21]) << 8) | recv_buf[22]) * 0.01;
+  imu_data.angular_velocity.x = static_cast<double>(static_cast<int16_t>((recv_buf[17] << 8) | recv_buf[18])) * 0.01;
+  imu_data.angular_velocity.y = static_cast<double>(static_cast<int16_t>((recv_buf[19] << 8) | recv_buf[20])) * 0.01;
+  imu_data.angular_velocity.z = static_cast<double>(static_cast<int16_t>((recv_buf[21] << 8) | recv_buf[22])) * 0.01;
 
-  roll  = static_cast<double>((static_cast<int16_t>(recv_buf[23]) << 8) | recv_buf[24]) * 0.01;
-  pitch = static_cast<double>((static_cast<int16_t>(recv_buf[25]) << 8) | recv_buf[26]) * 0.01;
-  yaw   = static_cast<double>((static_cast<int16_t>(recv_buf[27]) << 8) | recv_buf[28]) * 0.01;
+  roll  = static_cast<double>(static_cast<int16_t>((recv_buf[23] << 8) | recv_buf[24])) * 0.01;
+  pitch = static_cast<double>(static_cast<int16_t>((recv_buf[25] << 8) | recv_buf[26])) * 0.01;
+  yaw   = static_cast<double>(static_cast<int16_t>((recv_buf[27] << 8) | recv_buf[28])) * 0.01;
+
+  // RCLCPP_INFO(this->get_logger(),
+  // "IMU Data - Accel[x: %.2f, y: %.2f, z: %.2f], "
+  // "Gyro[x: %.2f, y: %.2f, z: %.2f], "
+  // "RPY[roll: %.2f, pitch: %.2f, yaw: %.2f]",
+  // imu_data.linear_acceleration.x,
+  // imu_data.linear_acceleration.y,
+  // imu_data.linear_acceleration.z,
+  // imu_data.angular_velocity.x,
+  // imu_data.angular_velocity.y,
+  // imu_data.angular_velocity.z,
+  // roll, pitch, yaw);
 
   return true;
 }
@@ -480,6 +558,16 @@ AGV_PRO::AGV_PRO(std::string node_name):rclcpp::Node(node_name)
   pub_voltage = create_publisher<std_msgs::msg::Float32>("voltage", 10);
   cmd_sub = this->create_subscription<geometry_msgs::msg::Twist>(
     "/cmd_vel", 10, std::bind(&AGV_PRO::cmdCallback, this, std::placeholders::_1));
+
+  set_output_service = this->create_service<agv_pro_msgs::srv::SetDigitalOutput>(
+    "set_digital_output",
+    std::bind(&AGV_PRO::handleSetDigitalOutput, this, std::placeholders::_1, std::placeholders::_2)
+  );
+
+  get_input_service = this->create_service<agv_pro_msgs::srv::GetDigitalInput>(
+    "get_digital_input",
+    std::bind(&AGV_PRO::handleGetDigitalInput, this, std::placeholders::_1, std::placeholders::_2)
+  );
 
   lastTime = this->get_clock()->now();
       
