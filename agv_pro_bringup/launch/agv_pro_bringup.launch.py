@@ -1,12 +1,13 @@
 import os
 from launch import LaunchDescription
+from launch.conditions import IfCondition
 from launch_ros.actions import Node,PushRosNamespace
 from launch.actions import DeclareLaunchArgument,IncludeLaunchDescription
 from launch.substitutions import Command,LaunchConfiguration,PythonExpression
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
-def include_lidar(pkg_name, launch_file, lidar_type, expected_type):
+def include_lidar(pkg_name, launch_file, enable_lidar, lidar_type, expected_type):
 
     return IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -16,16 +17,20 @@ def include_lidar(pkg_name, launch_file, lidar_type, expected_type):
                 launch_file
             )
         ),
-        condition=PythonExpression(
-            ["'", lidar_type, "' == '", expected_type, "'"]
+        condition=IfCondition(
+            PythonExpression([
+                "'", enable_lidar, "' == 'true' and '",
+                lidar_type, "' == '", expected_type, "'"
+            ])
         )
     )
 
 def generate_launch_description():
 
-    port_name_arg = LaunchConfiguration('port_name',default='/dev/agvpro_controller')
-    namespace = LaunchConfiguration('namespace', default='')
-    lidar_type = LaunchConfiguration('lidar_type', default='n10p')
+    port_name_arg = LaunchConfiguration('port_name')
+    namespace = LaunchConfiguration('namespace')
+    lidar_type = LaunchConfiguration('lidar_type')
+    enable_lidar = LaunchConfiguration('enable_lidar')
 
     urdf_file = os.path.join(
         get_package_share_directory('agv_pro_description'),
@@ -42,7 +47,7 @@ def generate_launch_description():
 
     declare_port_name_arg = DeclareLaunchArgument(
         'port_name', 
-        default_value=port_name_arg,
+        default_value='/dev/agvpro_controller',
         description='port name, e.g. /dev/ttyACM0'
     )
 
@@ -52,9 +57,15 @@ def generate_launch_description():
         description='Namespace for nodes'
     )
 
+    declare_enable_lidar_arg = DeclareLaunchArgument(
+        'enable_lidar',
+        default_value='true',
+        description='Whether to launch lidar drivers'
+    )
+
     declare_lidar_type_arg = DeclareLaunchArgument(
         'lidar_type',
-        default_value=lidar_type,
+        default_value='n10p',
         description='Lidar type: n10p | mid360 | l2'
     )
 
@@ -87,15 +98,16 @@ def generate_launch_description():
     )
 
     lidar_launchs = [
-        include_lidar('lslidar_driver', 'lsn10p_launch.py', lidar_type, 'n10p'),
-        include_lidar('livox_ros_driver2', 'msg_MID360_launch.py', lidar_type, 'mid360'),
-        include_lidar('unitree_lidar_ros2', 'launch.py', lidar_type, 'l2'),
+        include_lidar('lslidar_driver', 'lsn10p_launch.py', enable_lidar, lidar_type, 'n10p'),
+        include_lidar('livox_ros_driver2', 'msg_MID360_launch.py',enable_lidar, lidar_type, 'mid360'),
+        include_lidar('unitree_lidar_ros2', 'launch.py', enable_lidar, lidar_type, 'l2'),
     ]
 
     return LaunchDescription(
         [
             declare_port_name_arg,
             declare_namespace_arg,
+            declare_enable_lidar_arg,
             declare_lidar_type_arg,
             ns_action,
             agv_pro_node,

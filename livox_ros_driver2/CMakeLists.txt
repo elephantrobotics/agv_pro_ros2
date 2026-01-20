@@ -136,5 +136,5 @@ endif()
 
 ament_auto_package(INSTALL_TO_SHARE
   config
-  launch_ROS2
+  launch
 )
