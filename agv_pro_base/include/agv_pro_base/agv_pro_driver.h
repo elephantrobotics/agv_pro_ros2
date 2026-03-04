@@ -15,6 +15,8 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <agv_pro_msgs/srv/set_digital_output.hpp>
 #include <agv_pro_msgs/srv/get_digital_input.hpp>
+#include <agv_pro_msgs/srv/set_led_color.hpp>
+#include <agv_pro_msgs/srv/set_led_mode.hpp>
 
 #define SEND_DATA_SIZE 14                               // Total bytes in a command frame to ESP32(version>=V1.0.8)
 #define RECEIVE_FRAME_SIZE 31                           // Total bytes in a frame from ESP32(version>=V1.0.8)
@@ -23,6 +25,8 @@
 #define POWER_ON 0x10
 #define GET_POWER_STATE 0x12
 #define SET_AUTO_REPORT_STATE 0x23
+#define SET_LED_COLOR 0x34
+#define SET_LED_MODE 0x3A
 #define SET_OUTPUT_IO 0x40
 #define GET_INPUT_IO 0x41
 
@@ -196,6 +200,14 @@ private:
     const std::shared_ptr<agv_pro_msgs::srv::GetDigitalInput::Request> request,
     std::shared_ptr<agv_pro_msgs::srv::GetDigitalInput::Response> response);
 
+  void handleSetLedColor(
+    const std::shared_ptr<agv_pro_msgs::srv::SetLedColor::Request> request,
+    std::shared_ptr<agv_pro_msgs::srv::SetLedColor::Response> response);
+
+  void handleSetLedMode(
+    const std::shared_ptr<agv_pro_msgs::srv::SetLedMode::Request> request,
+    std::shared_ptr<agv_pro_msgs::srv::SetLedMode::Response> response);
+
   boost::asio::io_service io_;
   std::unique_ptr<boost::asio::serial_port> serial_port_;
 
@@ -262,6 +274,8 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub;
   rclcpp::Service<agv_pro_msgs::srv::SetDigitalOutput>::SharedPtr set_output_service;
   rclcpp::Service<agv_pro_msgs::srv::GetDigitalInput>::SharedPtr get_input_service;
+  rclcpp::Service<agv_pro_msgs::srv::SetLedColor>::SharedPtr set_led_service;
+  rclcpp::Service<agv_pro_msgs::srv::SetLedMode>::SharedPtr set_led_mode_service;
 
   sensor_msgs::msg::Imu imu_data;
   std::unique_ptr<tf2_ros::TransformBroadcaster> odomBroadcaster;
