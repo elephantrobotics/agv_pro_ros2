@@ -280,7 +280,7 @@ void AGV_PRO::handleSetDigitalOutput(
 
   uint8_t status = response_frame[4];
   if (status == 0x01) {
-    RCLCPP_INFO(this->get_logger(), "SetDigitalOutput succeeded");
+    RCLCPP_DEBUG(this->get_logger(), "SetDigitalOutput succeeded");
     response->success = true;
     response->message = "Success";
   } else {
@@ -315,10 +315,93 @@ void AGV_PRO::handleGetDigitalInput(
     RCLCPP_ERROR(this->get_logger(), "GetDigitalInput failed with status: 0x%02X", status);
     response->success = false;
   } else {
-    RCLCPP_INFO(this->get_logger(), "GetDigitalInput succeeded, state: %u", status);
+    RCLCPP_DEBUG(this->get_logger(), "GetDigitalInput succeeded, state: %u", status);
     response->state = static_cast<int32_t>(status);
     response->success = true;
     response->message = "Success";
+  }
+}
+
+void AGV_PRO::handleSetLedColor(
+  const std::shared_ptr<agv_pro_msgs::srv::SetLedColor::Request> request,
+  std::shared_ptr<agv_pro_msgs::srv::SetLedColor::Response> response)
+{
+  if (request->position < 0 || request->position > 1) {
+    RCLCPP_ERROR(this->get_logger(), "Invalid LED position: %d", request->position);
+    response->success = false;
+    response->message = "Invalid LED position";
+    return;
+  }
+
+  if (request->brightness < 0 || request->brightness > 255) {
+    RCLCPP_ERROR(this->get_logger(), "Invalid brightness: %d", request->brightness);
+    response->success = false;
+    response->message = "Invalid brightness";
+    return;
+  }
+
+  if (request->r < 0 || request->r > 255 ||
+      request->g < 0 || request->g > 255 ||
+      request->b < 0 || request->b > 255) {
+    RCLCPP_ERROR(
+      this->get_logger(),
+      "Invalid RGB value: r=%d g=%d b=%d",
+      request->r, request->g, request->b
+    );
+    response->success = false;
+    response->message = "Invalid RGB value";
+    return;
+  }
+
+  uint8_t position   = static_cast<uint8_t>(request->position);
+  uint8_t brightness = static_cast<uint8_t>(request->brightness);
+  uint8_t r          = static_cast<uint8_t>(request->r);
+  uint8_t g          = static_cast<uint8_t>(request->g);
+  uint8_t b          = static_cast<uint8_t>(request->b);
+
+  auto frame = build_serial_frame(SET_LED_COLOR, {position, brightness, r, g, b});
+  send_serial_frame(frame, true);
+
+  const std::vector<uint8_t> expected_header = {0xFE, 0xFE, 0x0B, SET_LED_COLOR};
+  auto response_frame = read_serial_response(expected_header, 8, 5.0);
+
+  // print_hex("recv_buf", response_frame); //debug
+
+  uint8_t status = response_frame[4];
+  if (status == 0x01) {
+    RCLCPP_DEBUG(this->get_logger(), "SetLedColor succeeded");
+    response->success = true;
+    response->message = "Success";
+  } else {
+    RCLCPP_ERROR(this->get_logger(), "SetLedColor failed with status: 0x%02X", status);
+    response->success = false;
+    response->message = "Failed with status code";
+  }
+}
+
+void AGV_PRO::handleSetLedMode(
+  const std::shared_ptr<agv_pro_msgs::srv::SetLedMode::Request> request,
+  std::shared_ptr<agv_pro_msgs::srv::SetLedMode::Response> response)
+{
+  uint8_t mode = request->mode ? 0x01 : 0x00;
+
+  auto frame = build_serial_frame(SET_LED_MODE, {mode});
+  send_serial_frame(frame, true);
+
+  const std::vector<uint8_t> expected_header = {0xFE, 0xFE, 0x0B, SET_LED_MODE};
+  auto response_frame = read_serial_response(expected_header, 8, 5.0);
+
+  // print_hex("recv_buf", response_frame); //debug
+
+  uint8_t status = response_frame[4];
+  if (status == 0x01) {
+    RCLCPP_DEBUG(this->get_logger(), "SetLedMode succeeded");
+    response->success = true;
+    response->message = "Success";
+  } else {
+    RCLCPP_ERROR(this->get_logger(), "SetLedMode failed with status: 0x%02X", status);
+    response->success = false;
+    response->message = "Failed with status code";
   }
 }
 
@@ -567,6 +650,16 @@ AGV_PRO::AGV_PRO(std::string node_name):rclcpp::Node(node_name)
   get_input_service = this->create_service<agv_pro_msgs::srv::GetDigitalInput>(
     "get_digital_input",
     std::bind(&AGV_PRO::handleGetDigitalInput, this, std::placeholders::_1, std::placeholders::_2)
+  );
+
+  set_led_service = this->create_service<agv_pro_msgs::srv::SetLedColor>(
+    "set_led_color",
+    std::bind(&AGV_PRO::handleSetLedColor, this, std::placeholders::_1, std::placeholders::_2)
+  );
+
+  set_led_mode_service = this->create_service<agv_pro_msgs::srv::SetLedMode>(
+    "set_led_mode",
+    std::bind(&AGV_PRO::handleSetLedMode, this, std::placeholders::_1, std::placeholders::_2)
   );
 
   lastTime = this->get_clock()->now();

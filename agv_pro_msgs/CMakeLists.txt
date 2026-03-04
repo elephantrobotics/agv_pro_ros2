@@ -17,6 +17,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AGVProStatus.msg"
   "srv/SetDigitalOutput.srv"
   "srv/GetDigitalInput.srv"
+  "srv/SetLedColor.srv"
+  "srv/SetLedMode.srv"
   DEPENDENCIES std_msgs
 )
 
