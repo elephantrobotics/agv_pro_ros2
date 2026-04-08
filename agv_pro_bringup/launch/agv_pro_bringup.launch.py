@@ -99,7 +99,7 @@ def generate_launch_description():
 
     lidar_launchs = [
         include_lidar('lslidar_driver', 'lsn10p_launch.py', enable_lidar, lidar_type, 'n10p'),
-        include_lidar('livox_ros_driver2', 'msg_MID360_launch.py',enable_lidar, lidar_type, 'mid360'),
+        include_lidar('livox_ros_driver2', 'MID360_launch.py',enable_lidar, lidar_type, 'mid360'),
         include_lidar('unitree_lidar_ros2', 'launch.py', enable_lidar, lidar_type, 'l2'),
     ]
 
