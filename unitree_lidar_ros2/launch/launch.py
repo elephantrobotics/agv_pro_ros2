@@ -9,12 +9,12 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     
-    use_rviz = LaunchConfiguration('use_rviz')
+    use_l2_rviz = LaunchConfiguration('use_rviz')
 
-    declare_use_rviz = DeclareLaunchArgument(
-        'use_rviz',
+    declare_rviz_arg = DeclareLaunchArgument(
+        'use_l2_rviz',
         default_value='false',
-        description='Whether to start RViz'
+        description='Whether to launch RViz for Unitree L2 LiDAR visualization'
     )
 
     pkg_share = get_package_share_directory('unitree_lidar_ros2')
@@ -57,12 +57,12 @@ def generate_launch_description():
        executable='rviz2',
        name='rviz2',
        arguments=['-d', rviz_config_file],
-       condition=IfCondition(use_rviz),
+       condition=IfCondition(use_l2_rviz),
        output='log'
     )
     return LaunchDescription(
         [
-            declare_use_rviz,
+            declare_rviz_arg,
             node1, 
             rviz_node,
         ]
