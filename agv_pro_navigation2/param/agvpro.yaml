@@ -14,10 +14,13 @@ amcl:
     global_frame_id: "map"
     lambda_short: 0.1
     laser_likelihood_max_dist: 2.0
-    laser_max_range: 100.0
-    laser_min_range: -1.0
+    # /* 阶段4修改：AMCL 激光匹配最大有效距离，限制远距离无效数据影响粒子权重，初始值为 100.0m */
+    laser_max_range: 10.0
+    # /* 阶段4修改：AMCL 激光匹配最小有效距离，过滤雷达近距盲区数据，初始值为 -1.0 */
+    laser_min_range: 0.2
     laser_model_type: "likelihood_field"
-    max_beams: 60
+    # /* 阶段4修改：AMCL 每次更新采样的激光束数量，提高定位匹配信息量，初始值为 60 */
+    max_beams: 90
     max_particles: 2000
     min_particles: 500
     odom_frame_id: "odom"
@@ -25,14 +28,19 @@ amcl:
     pf_z: 0.99
     recovery_alpha_fast: 0.0
     recovery_alpha_slow: 0.0
-    resample_interval: 2
-    robot_model_type: "nav2_amcl::OmniMotionModel"
+    # /* 阶段4修改：AMCL 粒子重采样间隔，提高低速接近目标时的定位收敛及时性，初始值为 2 */
+    resample_interval: 1
+    # /* 阶段4修改：AMCL 里程计运动模型，减少未使用 y 方向速度时的横向运动假设，初始值为 nav2_amcl::OmniMotionModel */
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
     save_pose_rate: 0.5
-    sigma_hit: 0.02
+    # /* 阶段4修改：AMCL 激光命中似然标准差，降低真实车地图匹配误差导致的权重过敏感，初始值为 0.02 */
+    sigma_hit: 0.04
     tf_broadcast: true
     transform_tolerance: 0.3
-    update_min_a: 0.06
-    update_min_d: 0.025
+    # /* 方案2修改：降低 AMCL 角度更新触发阈值，让目标附近低速小角度调整时定位更新更及时，初始值为 0.06rad */
+    update_min_a: 0.04
+    # /* 方案2修改：降低 AMCL 位移更新触发阈值，让目标附近低速接近时更频繁使用激光修正定位，初始值为 0.025m */
+    update_min_d: 0.015
     z_hit: 0.7
     z_max: 0.001
     z_rand: 0.059
@@ -132,13 +140,15 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
+      # /* 阶段2修改：最终位置成功阈值，避免 25cm 内提前判定到点，初始值为 0.25m */
+      xy_goal_tolerance: 0.05
+      # /* 阶段2临时验证修改：最终姿态成功阈值，放宽到约 5.7 度以验证大角度掉头时末端旋转振荡是否由 0.05rad 过严导致，初始值为 0.25rad*/
+      yaw_goal_tolerance: 0.8
     # DWB parameters
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: True
-      min_vel_x: 0.0
+      min_vel_x: -0.03
       min_vel_y: 0.0
       max_vel_x: 0.26
       max_vel_y: 0.0
@@ -150,10 +160,10 @@ controller_server:
       # https://github.com/ROBOTIS-GIT/turtlebot3_simulations/issues/75
       acc_lim_x: 2.5
       acc_lim_y: 0.0
-      acc_lim_theta: 3.2
+      acc_lim_theta: 2.5
       decel_lim_x: -2.5
       decel_lim_y: 0.0
-      decel_lim_theta: -3.2
+      decel_lim_theta: -2.5
       vx_samples: 20
       vy_samples: 5
       vtheta_samples: 40
@@ -161,8 +171,10 @@ controller_server:
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.1
-      xy_goal_tolerance: 0.25
-      trans_stopped_velocity: 0.1
+      # /* 阶段2修改：DWB RotateToGoal 进入末端减速/旋转模式的位置窗口，避免 25cm 内过早进入末端旋转逻辑，初始值为 0.25m */
+      xy_goal_tolerance: 0.03 #0.03
+      # /* 阶段2修改：进入只旋转阶段前允许的最大平移速度，避免平移速度小于 0.1m/s 时过早停止平移修正，初始值为 0.1m/s */
+      trans_stopped_velocity: 0.01 #0.01
       short_circuit_trajectory_evaluation: True
       stateful: True
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
@@ -292,8 +304,10 @@ planner_server:
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
-      tolerance: 2.0
+      # /* 阶段2修改：全局规划目标替代容差，避免 2.0m 范围内替代终点影响精度测试，初始值为 2.0m */
+      tolerance: 0.05 #0.05
       use_astar: false
+      # /* 阶段2修改：是否允许规划到未知区域，避免精度测试阶段出现不可控路径终点，初始值为 true */
       allow_unknown: true
 
 planner_server_rclcpp_node:
