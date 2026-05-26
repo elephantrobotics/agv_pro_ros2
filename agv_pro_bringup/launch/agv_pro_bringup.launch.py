@@ -47,7 +47,7 @@ def generate_launch_description():
 
     declare_port_name_arg = DeclareLaunchArgument(
         'port_name', 
-        default_value='/dev/l1_controller',
+        default_value='/dev/agvpro_controller',
         description='port name, e.g. /dev/ttyACM0'
     )
 
@@ -65,7 +65,7 @@ def generate_launch_description():
 
     declare_lidar_type_arg = DeclareLaunchArgument(
         'lidar_type',
-        default_value='mid360s',
+        default_value='n10p',
         description='Lidar type: n10p | mid360s | l2'
     )
 
@@ -98,7 +98,9 @@ def generate_launch_description():
     )
 
     lidar_launchs = [
+        include_lidar('lslidar_driver', 'lsn10p_launch.py', enable_lidar, lidar_type, 'n10p'),
         include_lidar('livox_ros_driver2', 'msg_MID360s_launch.py',enable_lidar, lidar_type, 'mid360s'),
+        include_lidar('unitree_lidar_ros2', 'launch.py', enable_lidar, lidar_type, 'l2'),
     ]
 
     return LaunchDescription(
