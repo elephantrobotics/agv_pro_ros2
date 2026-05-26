@@ -14,12 +14,12 @@ amcl:
     global_frame_id: "map"
     lambda_short: 0.1
     laser_likelihood_max_dist: 2.0
-    # /* 阶段4修改：AMCL 激光匹配最大有效距离，限制远距离无效数据影响粒子权重，初始值为 100.0m */
+    # 激光匹配最大有效距离 / Maximum valid laser matching range, 限制远距离无效数据对粒子权重的影响 / limits the effect of invalid distant data on particle weights, 初始值 / Initial value: 100.0 m
     laser_max_range: 10.0
-    # /* 阶段4修改：AMCL 激光匹配最小有效距离，过滤雷达近距盲区数据，初始值为 -1.0 */
+    # 激光匹配最小有效距离 / Minimum valid laser matching range, 过滤雷达近距离盲区数据 / filters data in the lidar near-field blind zone, 初始值 / Initial value: -1.0
     laser_min_range: 0.2
     laser_model_type: "likelihood_field"
-    # /* 阶段4修改：AMCL 每次更新采样的激光束数量，提高定位匹配信息量，初始值为 60 */
+    # 每次定位更新采样的激光束数量 / Number of laser beams sampled per localization update, 增加定位匹配所使用的观测信息 / increases observation information used for localization matching, 初始值 / Initial value: 60
     max_beams: 90
     max_particles: 2000
     min_particles: 500
@@ -28,18 +28,18 @@ amcl:
     pf_z: 0.99
     recovery_alpha_fast: 0.0
     recovery_alpha_slow: 0.0
-    # /* 阶段4修改：AMCL 粒子重采样间隔，提高低速接近目标时的定位收敛及时性，初始值为 2 */
+    # 粒子滤波重采样间隔 / Particle filter resampling interval, 控制定位重采样与收敛更新频率 / controls localization resampling and convergence update frequency, 初始值 / Initial value: 2
     resample_interval: 1
-    # /* 阶段4修改：AMCL 里程计运动模型，减少未使用 y 方向速度时的横向运动假设，初始值为 nav2_amcl::OmniMotionModel */
+    # 里程计运动模型类型 / Odometry motion model type, 定义机器人运动噪声与粒子位姿预测模型 / defines robot motion noise and particle pose prediction model, 初始值 / Initial value: nav2_amcl::OmniMotionModel
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
     save_pose_rate: 0.5
-    # /* 阶段4修改：AMCL 激光命中似然标准差，降低真实车地图匹配误差导致的权重过敏感，初始值为 0.02 */
+    # 激光命中模型标准差 / Laser hit model standard deviation, 调节激光观测偏差对粒子权重的敏感程度 / adjusts particle-weight sensitivity to laser observation error, 初始值 / Initial value: 0.02
     sigma_hit: 0.04
     tf_broadcast: true
     transform_tolerance: 0.3
-    # /* 方案2修改：降低 AMCL 角度更新触发阈值，让目标附近低速小角度调整时定位更新更及时，初始值为 0.06rad */
+    # 触发定位更新的最小旋转角度 / Minimum rotation angle triggering a localization update, 控制小角度运动时激光定位更新频率 / controls laser localization update frequency during small-angle motion, 初始值 / Initial value: 0.06 rad
     update_min_a: 0.04
-    # /* 方案2修改：降低 AMCL 位移更新触发阈值，让目标附近低速接近时更频繁使用激光修正定位，初始值为 0.025m */
+    # 触发定位更新的最小平移距离 / Minimum translation distance triggering a localization update, 控制低速平移时激光定位更新频率 / controls laser localization update frequency during low-speed translation, 初始值 / Initial value: 0.025 m
     update_min_d: 0.015
     z_hit: 0.7
     z_max: 0.001
@@ -140,9 +140,9 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      # /* 阶段2修改：最终位置成功阈值，避免 25cm 内提前判定到点，初始值为 0.25m */
+      # 到达目标的位置容差 / Goal position tolerance, 判定机器人位置是否满足导航完成条件 / determines whether robot position satisfies navigation completion, 初始值 / Initial value: 0.25 m
       xy_goal_tolerance: 0.05
-      # /* 阶段2临时验证修改：最终姿态成功阈值，放宽到约 5.7 度以验证大角度掉头时末端旋转振荡是否由 0.05rad 过严导致，初始值为 0.25rad*/
+      # 到达目标的航向角容差 / Goal heading tolerance, 判定机器人姿态是否满足导航完成条件 / determines whether robot orientation satisfies navigation completion, 初始值 / Initial value: 0.25 rad
       yaw_goal_tolerance: 0.8
     # DWB parameters
     FollowPath:
@@ -171,10 +171,10 @@ controller_server:
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.1
-      # /* 阶段2修改：DWB RotateToGoal 进入末端减速/旋转模式的位置窗口，避免 25cm 内过早进入末端旋转逻辑，初始值为 0.25m */
-      xy_goal_tolerance: 0.03 #0.03
-      # /* 阶段2修改：进入只旋转阶段前允许的最大平移速度，避免平移速度小于 0.1m/s 时过早停止平移修正，初始值为 0.1m/s */
-      trans_stopped_velocity: 0.01 #0.01
+      # DWB 进入目标姿态调整模式的位置容差 / Position tolerance for DWB goal-orientation adjustment mode, 控制路径跟踪切换到末端旋转控制的距离窗口 / controls the distance window for switching from path tracking to final rotation control, 初始值 / Initial value: 0.25 m
+      xy_goal_tolerance: 0.03
+      # 判定平移停止的速度阈值 / Velocity threshold for considering translation stopped, 控制进入仅旋转控制前的平移停止条件 / controls the translation-stop condition before rotate-only control, 初始值 / Initial value: 0.1 m/s
+      trans_stopped_velocity: 0.01
       short_circuit_trajectory_evaluation: True
       stateful: True
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
@@ -304,10 +304,10 @@ planner_server:
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
-      # /* 阶段2修改：全局规划目标替代容差，避免 2.0m 范围内替代终点影响精度测试，初始值为 2.0m */
-      tolerance: 0.05 #0.05
+      # 全局规划终点替代容差 / Global planner substitute-goal tolerance, 目标点不可达时限定可接受替代终点的距离范围 / limits the acceptable substitute-goal distance when the goal is unreachable, 初始值 / Initial value: 2.0 m
+      tolerance: 0.05
       use_astar: false
-      # /* 阶段2修改：是否允许规划到未知区域，避免精度测试阶段出现不可控路径终点，初始值为 true */
+      # 是否允许路径经过未知区域 / Whether paths may traverse unknown space, 控制全局规划器能否使用未观测栅格 / controls whether the global planner may use unobserved cells, 初始值 / Initial value: true
       allow_unknown: true
 
 planner_server_rclcpp_node:
