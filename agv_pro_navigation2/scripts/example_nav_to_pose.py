@@ -17,11 +17,6 @@ Basic navigation demo to go to pose.
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Send navigation test goals.')
     parser.add_argument(
-        '--localization',
-        choices=('amcl', 'slam'),
-        default='amcl',
-        help='Localization backend started by navigation2_active.launch.py.')
-    parser.add_argument(
         'targets',
         nargs='*',
         help='Waypoint letters to execute once, for example AB. Omit to loop ABCDE.')
@@ -99,14 +94,9 @@ if __name__ == '__main__':
     rclpy.init()
     navigator = BasicNavigator()
 
-    if cli_args.localization == 'slam':
-        # slam_toolbox on Humble is not a Nav2 lifecycle-managed localizer.
-        navigator._waitForNodeToActivate('bt_navigator')
-        navigator.info('Nav2 is ready for use!')
-    else:
-        # AMCL obtains its initial origin pose from agvpro.yaml.
-        navigator.initial_pose_received = True
-        navigator.waitUntilNav2Active()
+    # AMCL obtains its initial origin pose from agvpro.yaml.
+    navigator.initial_pose_received = True
+    navigator.waitUntilNav2Active()
 
     # Try to load waypoints from YAML, fallback to hardcoded defaults
     waypoints = {}
