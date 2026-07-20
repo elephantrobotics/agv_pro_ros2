@@ -15,6 +15,7 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AGVProStatus.msg"
+  "msg/FollowerPoint.msg"
   "srv/SetDigitalOutput.srv"
   "srv/GetDigitalInput.srv"
   "srv/SetLedColor.srv"

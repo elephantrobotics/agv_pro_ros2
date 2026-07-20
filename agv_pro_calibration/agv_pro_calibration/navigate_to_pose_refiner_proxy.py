@@ -38,10 +38,10 @@ class NavigateToPoseRefinerProxy(Node):
 
     def __init__(self):
         super().__init__('navigate_to_pose_refiner_proxy')
-        self.public_goal_topic = '/goal_pose'
-        self.refiner_goal_topic = '/final_pose_refiner/goal_pose'
-        self.refiner_status_topic = '/final_pose_refiner/status'
-        self.refiner_param_service = '/final_pose_refiner/set_parameters'
+        self.public_goal_topic = 'goal_pose'
+        self.refiner_goal_topic = 'final_pose_refiner/goal_pose'
+        self.refiner_status_topic = 'final_pose_refiner/status'
+        self.refiner_param_service = 'final_pose_refiner/set_parameters'
         self.start_param = 'final_pose_refiner_start'
         self.cancel_param = 'final_pose_refiner_cancel'
 
@@ -74,21 +74,21 @@ class NavigateToPoseRefinerProxy(Node):
         self._add_route(
             'NavigateToPose',
             NavigateToPose,
-            '/navigate_to_pose',
-            '/navigate_to_pose_nav2',
+            'navigate_to_pose',
+            'navigate_to_pose_nav2',
             lambda request: request.pose,
         )
         self._add_route(
             'NavigateThroughPoses',
             NavigateThroughPoses,
-            '/navigate_through_poses',
-            '/navigate_through_poses_nav2',
+            'navigate_through_poses',
+            'navigate_through_poses_nav2',
             lambda request: request.poses[-1] if request.poses else None,
         )
         self.topic_nav_client = ActionClient(
             self,
             NavigateToPose,
-            '/navigate_to_pose',
+            'navigate_to_pose',
             callback_group=self.callback_group,
         )
         self.goal_topic_sub = self.create_subscription(
@@ -140,6 +140,7 @@ class NavigateToPoseRefinerProxy(Node):
 
         final_pose = route['final_pose_getter'](goal_request)
         if final_pose is not None:
+            self._set_refiner_parameter(self.cancel_param, True)
             self._publish_refiner_goal(final_pose)
         return GoalResponse.ACCEPT
 
@@ -156,6 +157,8 @@ class NavigateToPoseRefinerProxy(Node):
             )
             return
 
+        self._set_refiner_parameter(self.cancel_param, True)
+        self._publish_refiner_goal(pose)
         send_future = self.topic_nav_client.send_goal_async(goal)
         send_future.add_done_callback(self._on_topic_goal_response)
 
@@ -192,7 +195,10 @@ class NavigateToPoseRefinerProxy(Node):
 
         result, status = nav_result
         if status == GoalStatus.STATUS_CANCELED:
-            goal_handle.canceled()
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+            else:
+                goal_handle.abort()
             return result
         if status != GoalStatus.STATUS_SUCCEEDED:
             goal_handle.abort()
@@ -206,7 +212,10 @@ class NavigateToPoseRefinerProxy(Node):
         if refine_status == 'succeeded':
             goal_handle.succeed()
         elif refine_status == 'canceled':
-            goal_handle.canceled()
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+            else:
+                goal_handle.abort()
         else:
             self.get_logger().error(
                 f"{route['label']} completed in Nav2 but final refinement ended with "

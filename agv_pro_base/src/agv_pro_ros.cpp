@@ -521,7 +521,7 @@ void AGV_PRO::publisherImuSensor()
   sensor_msgs::msg::Imu ImuSensor;
 
   ImuSensor.header.stamp = this->get_clock()->now();
-  ImuSensor.header.frame_id = "imu_link";
+  ImuSensor.header.frame_id = frame_id_of_imu_;
 
   tf2::Quaternion qua;
   qua.setRPY(0, 0, yaw * M_PI / 180.0);
@@ -640,7 +640,7 @@ AGV_PRO::AGV_PRO(std::string node_name):rclcpp::Node(node_name)
   pub_odom = this->create_publisher<nav_msgs::msg::Odometry>("odom", 50);
   pub_voltage = create_publisher<std_msgs::msg::Float32>("voltage", 10);
   cmd_sub = this->create_subscription<geometry_msgs::msg::Twist>(
-    "/cmd_vel", 10, std::bind(&AGV_PRO::cmdCallback, this, std::placeholders::_1));
+    "cmd_vel", 10, std::bind(&AGV_PRO::cmdCallback, this, std::placeholders::_1));
 
   set_output_service = this->create_service<agv_pro_msgs::srv::SetDigitalOutput>(
     "set_digital_output",

@@ -1,0 +1,7 @@
+<class_libraries>
+  <library path="agv_pro_multi_layers">
+    <class type="agv_pro_multi::RobotFootprintLayer" base_class_type="nav2_costmap_2d::Layer">
+      <description>Stamps teammate robot footprints into the costmap each cycle from TF.</description>
+    </class>
+  </library>
+</class_libraries>

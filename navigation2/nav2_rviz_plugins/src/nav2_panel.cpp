@@ -407,6 +407,9 @@ Nav2Panel::onInitialize()
     "navigate_to_pose/_action/status",
     rclcpp::SystemDefaultsQoS(),
     [this](const action_msgs::msg::GoalStatusArray::SharedPtr msg) {
+      if (msg->status_list.empty()) {
+        return;
+      }
       navigation_goal_status_indicator_->setText(
         getGoalStatusLabel(msg->status_list.back().status));
       if (msg->status_list.back().status != action_msgs::msg::GoalStatus::STATUS_EXECUTING) {
@@ -417,6 +420,9 @@ Nav2Panel::onInitialize()
     "navigate_through_poses/_action/status",
     rclcpp::SystemDefaultsQoS(),
     [this](const action_msgs::msg::GoalStatusArray::SharedPtr msg) {
+      if (msg->status_list.empty()) {
+        return;
+      }
       navigation_goal_status_indicator_->setText(
         getGoalStatusLabel(msg->status_list.back().status));
       if (msg->status_list.back().status != action_msgs::msg::GoalStatus::STATUS_EXECUTING) {
@@ -604,7 +610,11 @@ Nav2Panel::timerEvent(QTimerEvent * event)
       }
 
       rclcpp::spin_some(client_node_);
-      auto status = waypoint_follower_goal_handle_->get_status();
+      auto goal_handle = waypoint_follower_goal_handle_;
+      if (!goal_handle) {
+        return;
+      }
+      auto status = goal_handle->get_status();
 
       // Check if the goal is still executing
       if (status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED ||
@@ -625,7 +635,11 @@ Nav2Panel::timerEvent(QTimerEvent * event)
       }
 
       rclcpp::spin_some(client_node_);
-      auto status = nav_through_poses_goal_handle_->get_status();
+      auto goal_handle = nav_through_poses_goal_handle_;
+      if (!goal_handle) {
+        return;
+      }
+      auto status = goal_handle->get_status();
 
       // Check if the goal is still executing
       if (status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED ||
@@ -646,7 +660,11 @@ Nav2Panel::timerEvent(QTimerEvent * event)
       }
 
       rclcpp::spin_some(client_node_);
-      auto status = navigation_goal_handle_->get_status();
+      auto goal_handle = navigation_goal_handle_;
+      if (!goal_handle) {
+        return;
+      }
+      auto status = goal_handle->get_status();
 
       // Check if the goal is still executing
       if (status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED ||

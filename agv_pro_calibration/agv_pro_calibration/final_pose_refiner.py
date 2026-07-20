@@ -24,15 +24,15 @@ class FinalPoseRefiner(Node):
         self.cancel_param = f'{self.param_prefix}cancel'
         self.auto_start_param = f'{self.param_prefix}auto_start_on_nav_success'
         self.log_separator = '------------------------------------------------------------'
-        self.cmd_vel_topic = '/cmd_vel'
-        self.goal_topic = '/goal_pose'
-        self.action_goal_topic = '/final_pose_refiner/goal_pose'
-        self.nav_status_topic = '/navigate_to_pose/_action/status'
-        self.nav2_status_topic = '/navigate_to_pose_nav2/_action/status'
-        self.global_frame = 'map'
-        self.base_frame = 'base_footprint'
+        self.cmd_vel_topic = 'cmd_vel'
+        self.goal_topic = 'goal_pose'
+        self.action_goal_topic = 'final_pose_refiner/goal_pose'
+        self.nav_status_topic = 'navigate_to_pose/_action/status'
+        self.nav2_status_topic = 'navigate_to_pose_nav2/_action/status'
+        self.global_frame = self.declare_parameter('global_frame', 'map').value
+        self.base_frame = self.declare_parameter('base_frame', 'base_footprint').value
 
-        self._declare_param('status_topic', '/final_pose_refiner/status')
+        self._declare_param('status_topic', 'final_pose_refiner/status')
         self.declare_parameter(self.start_param, False)
         self.declare_parameter(self.cancel_param, False)
         self.declare_parameter(self.auto_start_param, False)
@@ -103,6 +103,13 @@ class FinalPoseRefiner(Node):
                 f'Ignoring goal in frame "{msg.header.frame_id}". Expected "{self.global_frame}".'
             )
             return
+
+        if self.state == 'running':
+            self.get_logger().warn(
+                'Received a new refine target while final refinement is running; '
+                'canceling the current refinement.'
+            )
+            self._finish_refine('canceled')
 
         q = msg.pose.orientation
         target_yaw = self._yaw_from_quaternion(q.x, q.y, q.z, q.w)
@@ -327,7 +334,7 @@ class FinalPoseRefiner(Node):
             self._publish_stop()
 
     def _stop_robot_with_ros_cli(self):
-        topic = shlex.quote(self.cmd_vel_topic)
+        topic = shlex.quote(self.cmd_vel_pub.topic_name)
         zero_twist = (
             '"{linear: {x: 0.0, y: 0.0, z: 0.0}, '
             'angular: {x: 0.0, y: 0.0, z: 0.0}}"'

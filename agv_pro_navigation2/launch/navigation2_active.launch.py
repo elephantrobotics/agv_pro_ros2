@@ -13,18 +13,23 @@ from launch_ros.actions import Node, SetRemap
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
     use_rviz = LaunchConfiguration('use_rviz', default='true')
+
+    pkg_dir = get_package_share_directory('agv_pro_navigation2')
+    workspace_dir = os.path.abspath(os.path.join(
+        pkg_dir, '..', '..', '..', '..', 'src', 'agv_pro_navigation2'))
+
     map_dir = LaunchConfiguration(
         'map',
-        default=os.path.join(get_package_share_directory('agv_pro_navigation2'), 'map', 'map.yaml'))
+        default=os.path.join(workspace_dir, 'map', 'map.yaml'))
 
     param_file_name = 'agvpro.yaml'
     param_dir = LaunchConfiguration(
         'params_file',
-        default=os.path.join(get_package_share_directory('agv_pro_navigation2'), 'param', param_file_name))
+        default=os.path.join(pkg_dir, 'param', param_file_name))
 
     nav2_launch_file_dir = os.path.join(get_package_share_directory('nav2_bringup'), 'launch')
 
-    rviz_config_dir = os.path.join(get_package_share_directory('agv_pro_navigation2'), 'rviz', 'agvpro_navigation2.rviz')
+    rviz_config_dir = os.path.join(workspace_dir, 'rviz', 'agvpro_navigation2.rviz')
 
     return LaunchDescription([
         DeclareLaunchArgument(
