@@ -8,10 +8,6 @@ from std_msgs.msg import UInt16,Bool,Int16
 import time
 from visualization_msgs.msg import MarkerArray
 from agv_pro_msgs.msg import FollowerPoint
-from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
-from tf2_ros import TransformBroadcaster
-from geometry_msgs.msg import TransformStamped
-import tf2_ros
 
 # from transforms3d.euler import euler2quat, quat2euler
 import math
@@ -28,9 +24,6 @@ class NavigationClient(Node):
         self.goal_pose.header.frame_id = "map"
         self.orinal_pose.header.frame_id = "map"
         
-        
-        self.robot1_to_point2_broadcaster = StaticTransformBroadcaster(self)
-        self.robot1_to_point3_broadcaster = StaticTransformBroadcaster(self)
         
         self.prev_queue = None
         self.prev_dist = None
@@ -64,50 +57,20 @@ class NavigationClient(Node):
         
         # 检查参数是否发生变化
         if current_queue != self.prev_queue or current_dist != self.prev_dist:
-            self.update_tf(current_queue, current_dist)
-        
+            self.update_queue(current_queue, current_dist)
+
             self.prev_queue = current_queue
             self.prev_dist = current_dist
 
-        
-    def update_tf(self, queue_type, dist):
-        self.queue = queue_type
+
+    def update_queue(self, queue_type, dist):
+        self.queue = queue_type if queue_type in ("column", "row", "convoy") else "convoy"
         self.dist = dist
         queue_msg = FollowerPoint()
         queue_msg.dist = self.dist
-        robot2_transform = TransformStamped()
-        robot3_transform = TransformStamped()        
-        robot2_transform.header.stamp = self.get_clock().now().to_msg()
-        robot2_transform.header.frame_id = "robot1/base_link"
-        robot2_transform.child_frame_id = "point2"     
-        robot3_transform.header.stamp = self.get_clock().now().to_msg()
-        robot3_transform.header.frame_id = "robot1/base_link"
-        robot3_transform.child_frame_id = "point3"               
-
-        if self.queue == "column":
-            robot2_transform.transform.translation.x =  -self.dist
-            robot2_transform.transform.translation.y =  0.0
-            robot3_transform.transform.translation.x =  -self.dist*2
-            robot3_transform.transform.translation.y =  0.0
-        elif self.queue == "row":
-            robot2_transform.transform.translation.x =  0.0
-            robot2_transform.transform.translation.y =  -self.dist
-            robot3_transform.transform.translation.x =  0.0
-            robot3_transform.transform.translation.y =  self.dist
-
-        else :#convoy
-            self.queue = "convoy"
-            robot2_transform.transform.translation.x =  -self.dist
-            robot2_transform.transform.translation.y =  -self.dist
-            robot3_transform.transform.translation.x =  -self.dist
-            robot3_transform.transform.translation.y =  self.dist
-            robot2_transform.transform.rotation.w = 1.0
-            robot3_transform.transform.rotation.w = 1.0
-        self.robot1_to_point2_broadcaster.sendTransform(robot2_transform)   
-        self.robot1_to_point3_broadcaster.sendTransform(robot3_transform)
         queue_msg.queue = self.queue
         self.queue_publisher.publish(queue_msg)
-        print(f"queue type: {self.queue} send TF.")
+        print(f"queue type: {self.queue}, dist: {self.dist:.2f} m.")
 
     def send_goal(self):
         goal_msg = NavigateThroughPoses.Goal()

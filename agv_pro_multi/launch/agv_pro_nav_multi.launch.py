@@ -39,6 +39,7 @@ def generate_launch_description():
     ]
 
     base_frame = [robot_name, '/base_footprint']
+    base_frame_link = [robot_name, '/base_link']
 
     replaced_params = ReplaceString(
         source_file=params_file,
@@ -54,6 +55,8 @@ def generate_launch_description():
             convert_types=True),
         allow_substs=True)
 
+    tf_remaps = [('/tf', 'tf'), ('/tf_static', 'tf_static')]
+
     action_remaps = [SetRemap('goal_pose', 'goal_pose_nav2')] + [
         SetRemap(
             '{}/_action/{}'.format(action, suffix),
@@ -66,8 +69,8 @@ def generate_launch_description():
     nav_group = GroupAction(
         actions=[
             PushRosNamespace(robot_name),
-            SetRemap('/tf', '/tf'),
-            SetRemap('/tf_static', '/tf_static'),
+            SetRemap('/tf', 'tf'),
+            SetRemap('/tf_static', 'tf_static'),
             SetRemap('map', '/map'),
             SetRemap('map_updates', '/map_updates'),
         ] + action_remaps + [
@@ -105,7 +108,8 @@ def generate_launch_description():
             name='navigate_to_pose_refiner_proxy',
             namespace=robot_name,
             output='screen',
-            parameters=[{'use_sim_time': use_sim_time, 'nav2_server_timeout_sec': 60.0}]),
+            parameters=[{'use_sim_time': use_sim_time, 'nav2_server_timeout_sec': 60.0}],
+            remappings=tf_remaps),
         Node(
             package='agv_pro_calibration',
             executable='final_pose_refiner',
@@ -120,7 +124,20 @@ def generate_launch_description():
                 'final_pose_refiner_max_wz': 0.65,
                 'final_pose_refiner_yaw_tolerance': 0.08,
                 'final_pose_refiner_handoff_distance': 0.3,
-            }]),
+            }],
+            remappings=tf_remaps),
+        Node(
+            package='agv_pro_multi',
+            executable='robot_pose_publisher',
+            name='robot_pose_publisher',
+            namespace=robot_name,
+            output='screen',
+            parameters=[{
+                'use_sim_time': use_sim_time,
+                'robot_id': robot_name,
+                'base_frame': base_frame_link,
+            }],
+            remappings=tf_remaps),
     ])
 
     rviz_node = Node(

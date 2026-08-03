@@ -1,31 +1,33 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-import tf2_ros
 import geometry_msgs.msg
-from tf2_ros import TransformListener
-from tf2_geometry_msgs import do_transform_pose
-from scipy.spatial.transform import Rotation as R
 from std_msgs.msg import Float32,Bool,Int16,UInt16
 
-from geometry_msgs.msg import PoseStamped,PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 import math
 from agv_pro_msgs.msg import FollowerPoint
+
+# 持续跟随的队形槽位，领航车 base 系下的 (x, y) 系数，乘以 dist 得到偏移；
+# Formation slots for live following as (x, y) factors in the leader base frame, scaled by dist.
+FORMATION_OFFSETS = {
+    'column': {'robot2': (-1.0, 0.0), 'robot3': (-2.0, 0.0)},
+    'row': {'robot2': (0.0, -1.0), 'robot3': (0.0, 1.0)},
+    'convoy': {'robot2': (-1.0, -1.0), 'robot3': (-1.0, 1.0)},
+}
 
 class TfListenerNode(Node):
     def __init__(self):
         super().__init__('tf_listener_node')
         self.declare_parameter('robot_id', 'robot2')
         self.robot_id = self.get_parameter('robot_id').get_parameter_value().string_value
-        self.tf_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
-        
+        self.declare_parameter('leader', 'robot1')
+        self.leader = self.get_parameter('leader').get_parameter_value().string_value
+
         if self.robot_id == 'robot2':
-            self.target_point = 'point2'
             self.pub_topic = f"/{self.robot_id}/goal_pose"
         elif self.robot_id == 'robot3':
-            self.target_point = 'point3'
             self.pub_topic = f"/{self.robot_id}/goal_pose"
         else:
             self.get_logger().error(f"Unsupported robot_id: {self.robot_id}")
@@ -43,13 +45,13 @@ class TfListenerNode(Node):
         from rclpy.qos import QoSProfile, DurabilityPolicy
         latched_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         # Subscribe to current position
-        self.odom_sub = self.create_subscription(PoseWithCovarianceStamped,'robot1/amcl_pose',self.odom_callback,latched_qos)
+        self.odom_sub = self.create_subscription(PoseStamped,f'/{self.leader}/pose',self.odom_callback,latched_qos)
         ## Publish new point
         self.pub_back = self.create_publisher(PoseStamped, self.pub_topic, 1)
         # Subscribe to target point
-        self.goal_sub = self.create_subscription(PoseStamped,'robot1/goal_pose',self.goal_pose_callback,1)
+        self.goal_sub = self.create_subscription(PoseStamped,f'/{self.leader}/goal_pose',self.goal_pose_callback,1)
         # Subscribe to target point
-        self.goal_sub2 = self.create_subscription(PoseWithCovarianceStamped,f'{self.robot_id}/amcl_pose',self.odom2_callback,latched_qos)
+        self.goal_sub2 = self.create_subscription(PoseStamped,f'/{self.robot_id}/pose',self.odom2_callback,latched_qos)
         # Subscribe to queue/dist
         self.queue_subscriber = self.create_subscription(FollowerPoint, '/queue_type', self.queue_callback, latched_qos)
 
@@ -78,16 +80,14 @@ class TfListenerNode(Node):
         else:
             self.get_logger().info(text)
 
-    def odom_callback(self, msg: PoseWithCovarianceStamped):
-        self.current_pose = msg.pose.pose
-        self.current_pose.position.x =  self.current_pose.position.x 
+    def odom_callback(self, msg: PoseStamped):
+        self.current_pose = msg.pose
         if self.goal_pose_text is None:
             return
-        self.print_log("info", f"\nLatest target point: x={self.goal_pose_text.pose.position.x:.3f}, y={self.goal_pose_text.pose.position.y:.3f}\nROBOT1 real-time position: x={self.current_pose.position.x:.3f}, y={self.current_pose.position.y:.3f}")
-        
-    def odom2_callback(self, msg: PoseWithCovarianceStamped):
-        self.current_pose2 = msg.pose.pose
-        self.current_pose2.position.x =  self.current_pose2.position.x 
+        self.print_log("info", f"\nLatest target point: x={self.goal_pose_text.pose.position.x:.3f}, y={self.goal_pose_text.pose.position.y:.3f}\n{self.leader} real-time position: x={self.current_pose.position.x:.3f}, y={self.current_pose.position.y:.3f}")
+
+    def odom2_callback(self, msg: PoseStamped):
+        self.current_pose2 = msg.pose
         if self.goal_pose_text is None:
             return
         self.print_log("info", f"\n{self.robot_id} real-time position: x={self.current_pose2.position.x:.3f}, y={self.current_pose2.position.y:.3f}")
@@ -95,7 +95,7 @@ class TfListenerNode(Node):
 
     def timer_callback(self):
         if self.current_pose is None:
-            self.print_log("warn", "Waiting for robot1/amcl_pose data...")
+            self.print_log("warn", f"Waiting for /{self.leader}/pose data...")
             return
         if self.goal_pose_text is None:
             self.get_point()
@@ -183,43 +183,61 @@ class TfListenerNode(Node):
         return math.atan2(siny_cosp, cosy_cosp)
 
 
+    def compute_live_pose(self, pose_msg):
+        """Calculate the formation slot from the leader real-time pose"""
+        if self.queue_flag == False:
+            self.print_log("warn", "Waiting for self.dist  self.queue data...")
+            return None
+        table = FORMATION_OFFSETS.get(self.queue, FORMATION_OFFSETS["convoy"])
+        offset_x, offset_y = table[self.robot_id]
+        offset_x *= self.dist
+        offset_y *= self.dist
+        yaw = self.quaternion_to_yaw(pose_msg.orientation)
+
+        new_pose = PoseStamped()
+        new_pose.header.frame_id = "map"
+        new_pose.header.stamp = rclpy.time.Time().to_msg()
+        new_pose.pose.position.x = pose_msg.position.x + offset_x * math.cos(yaw) - offset_y * math.sin(yaw)
+        new_pose.pose.position.y = pose_msg.position.y + offset_x * math.sin(yaw) + offset_y * math.cos(yaw)
+        new_pose.pose.position.z = pose_msg.position.z
+        new_pose.pose.orientation = pose_msg.orientation
+        return new_pose
+
     def get_point(self):
-        try:
-            transform = self.tf_buffer.lookup_transform('map', self.target_point, rclpy.time.Time())
-            quaternion = [0, 0, transform.transform.rotation.z, transform.transform.rotation.w]
-            rotation = R.from_quat(quaternion)
-            euler_angles = rotation.as_euler('xyz', degrees=True)
-            
-            current_x = transform.transform.translation.x
-            current_y = transform.transform.translation.y
-            current_z = transform.transform.rotation.z
-            current_w = transform.transform.rotation.w
+        if self.current_pose is None:
+            self.print_log("warn", f"Waiting for /{self.leader}/pose data...")
+            return
+        slot = self.compute_live_pose(self.current_pose)
+        if slot is None:
+            return
 
-            move_dist = math.hypot(current_x - self.prev_x, current_y - self.prev_y)
-            current_yaw = 2.0 * math.atan2(current_z, current_w)
-            prev_yaw = 2.0 * math.atan2(self.prev_z, self.prev_w)
-            yaw_diff = abs(math.atan2(math.sin(current_yaw - prev_yaw), math.cos(current_yaw - prev_yaw)))
+        current_x = slot.pose.position.x
+        current_y = slot.pose.position.y
+        current_z = slot.pose.orientation.z
+        current_w = slot.pose.orientation.w
 
-            if move_dist > 0.10 or yaw_diff > 0.08:
-                now = self.get_clock().now()
-                if (now - self.last_goal_time).nanoseconds < 800000000:
-                    return
-                self.last_goal_time = now
+        move_dist = math.hypot(current_x - self.prev_x, current_y - self.prev_y)
+        current_yaw = 2.0 * math.atan2(current_z, current_w)
+        prev_yaw = 2.0 * math.atan2(self.prev_z, self.prev_w)
+        yaw_diff = abs(math.atan2(math.sin(current_yaw - prev_yaw), math.cos(current_yaw - prev_yaw)))
 
-                self.goal_pose.pose.position.x = transform.transform.translation.x
-                self.goal_pose.pose.position.y = transform.transform.translation.y
-                self.goal_pose.pose.orientation.z = transform.transform.rotation.z
-                self.goal_pose.pose.orientation.w = transform.transform.rotation.w
-                self.goal_pose.header.stamp = rclpy.time.Time().to_msg()
-                self.pub_robot_pose.publish(self.goal_pose)
+        if move_dist > 0.10 or yaw_diff > 0.08:
+            now = self.get_clock().now()
+            if (now - self.last_goal_time).nanoseconds < 800000000:
+                return
+            self.last_goal_time = now
 
-                self.prev_z = current_z
-                self.prev_w = current_w
-                self.prev_x = current_x
-                self.prev_y = current_y
+            self.goal_pose.pose.position.x = current_x
+            self.goal_pose.pose.position.y = current_y
+            self.goal_pose.pose.orientation.z = current_z
+            self.goal_pose.pose.orientation.w = current_w
+            self.goal_pose.header.stamp = rclpy.time.Time().to_msg()
+            self.pub_robot_pose.publish(self.goal_pose)
 
-        except (tf2_ros.TransformException, KeyError) as e:
-            self.print_log("warn", f"Could not transform: {e}")
+            self.prev_z = current_z
+            self.prev_w = current_w
+            self.prev_x = current_x
+            self.prev_y = current_y
 
 def main(args=None):
     rclpy.init(args=args)

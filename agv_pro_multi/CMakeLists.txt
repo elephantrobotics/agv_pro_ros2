@@ -39,6 +39,10 @@ install(PROGRAMS ${PROJECT_NAME}/pub_follower_goal.py
   DESTINATION lib/${PROJECT_NAME} RENAME pub_follower_goal)
 install(PROGRAMS ${PROJECT_NAME}/get_follower_point.py
   DESTINATION lib/${PROJECT_NAME} RENAME get_follower_point)
+install(PROGRAMS ${PROJECT_NAME}/tf_aggregator.py
+  DESTINATION lib/${PROJECT_NAME} RENAME tf_aggregator)
+install(PROGRAMS ${PROJECT_NAME}/robot_pose_publisher.py
+  DESTINATION lib/${PROJECT_NAME} RENAME robot_pose_publisher)
 
 install(TARGETS agv_pro_multi_layers
   ARCHIVE DESTINATION lib
