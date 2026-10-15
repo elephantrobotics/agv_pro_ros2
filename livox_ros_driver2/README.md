@@ -1,6 +1,6 @@
 # Livox ROS Driver 2
 
-Livox ROS Driver 2 is the 2nd-generation driver package used to connect LiDAR products produced by Livox, applicable for ROS (noetic recommended) and ROS2 (foxy or humble recommended).
+Livox ROS Driver 2 is the 2nd-generation driver package used to connect LiDAR products produced by Livox. This workspace copy is packaged for ROS 2 and includes MID360S support.
 
   **Note :**
 
@@ -10,9 +10,8 @@ Livox ROS Driver 2 is the 2nd-generation driver package used to connect LiDAR pr
 
 ### 1.1 OS requirements
 
-  * Ubuntu 18.04 for ROS Melodic;
-  * Ubuntu 20.04 for ROS Noetic and ROS2 Foxy;
   * Ubuntu 22.04 for ROS2 Humble;
+  * Ubuntu 24.04 for ROS 2 Jazzy;
 
   **Tips:**
 
@@ -20,21 +19,16 @@ Livox ROS Driver 2 is the 2nd-generation driver package used to connect LiDAR pr
 
   How to install colcon: [Colcon installation instructions](https://docs.ros.org/en/foxy/Tutorials/Beginner-Client-Libraries/Colcon-Tutorial.html)
 
-### 1.2 Install ROS & ROS2
-
-For ROS Melodic installation, please refer to:
-[ROS Melodic installation instructions](https://wiki.ros.org/melodic/Installation)
-
-For ROS Noetic installation, please refer to:
-[ROS Noetic installation instructions](https://wiki.ros.org/noetic/Installation)
-
-For ROS2 Foxy installation, please refer to:
-[ROS Foxy installation instructions](https://docs.ros.org/en/foxy/Installation/Ubuntu-Install-Debians.html)
+### 1.2 Install ROS 2
 
 For ROS2 Humble installation, please refer to:
 [ROS Humble installation instructions](https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debians.html)
 
-Desktop-Full installation is recommend.
+For ROS2 Jazzy installation, please refer to:
+[ROS Jazzy installation instructions](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debians.html)
+
+
+Desktop-Full installation is recommended.
 
 ## 2. Build & Run Livox ROS Driver 2
 
@@ -54,55 +48,35 @@ git clone https://github.com/Livox-SDK/livox_ros_driver2.git ws_livox/src/livox_
 
   Please follow the guidance of installation in the [Livox-SDK2/README.md](https://github.com/Livox-SDK/Livox-SDK2/blob/master/README.md)
 
-### 2.3 Build the Livox ROS Driver 2:
+### 2.3 Build the Livox ROS Driver 2
 
-#### For ROS (take Noetic as an example):
+Build the package directly from the workspace root; no substitution script is required.
+
+#### For ROS2 Humble
 ```shell
-source /opt/ros/noetic/setup.sh
-./build.sh ROS1
+source /opt/ros/humble/setup.bash
+colcon build --packages-select livox_ros_driver2
+source install/setup.bash
 ```
 
-#### For ROS2 Foxy:
+#### For ROS2 Jazzy
+
 ```shell
-source /opt/ros/foxy/setup.sh
-./build.sh ROS2
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select livox_ros_driver2
+source install/setup.bash
 ```
 
-#### For ROS2 Humble:
-```shell
-source /opt/ros/humble/setup.sh
-./build.sh humble
-```
-
-### 2.4 Run Livox ROS Driver 2:
-
-#### For ROS:
+### 2.4 Run Livox ROS Driver 2
 
 ```shell
-source ../../devel/setup.sh
-roslaunch livox_ros_driver2 [launch file]
-```
-
-in which,  
-
-* **livox_ros_driver2** : is the ROS package name of Livox ROS Driver 2;
-* **[launch file]** : is the ROS launch file you want to use; the 'launch_ROS1' folder contains several launch samples for your reference;  
-
-An rviz launch example for HAP LiDAR would be:
-
-```shell
-roslaunch livox_ros_driver2 rviz_HAP.launch
-```
-
-#### For ROS2:
-```shell
-source ../../install/setup.sh
+source install/setup.bash
 ros2 launch livox_ros_driver2 [launch file]
 ```
 
 in which,  
 
-* **[launch file]** : is the ROS2 launch file you want to use; the 'launch_ROS2' folder contains several launch samples for your reference.
+* **[launch file]** : is the ROS2 launch file you want to use; the `launch` folder contains the available launch files.
 
 A rviz launch example for HAP LiDAR would be:
 
@@ -114,16 +88,18 @@ ros2 launch livox_ros_driver2 rviz_HAP_launch.py
 
 ### 3.1 Launch file configuration instructions
 
-Launch files of ROS are in the "ws_livox/src/livox_ros_driver2/launch_ROS1" directory and launch files of ROS2 are in the "ws_livox/src/livox_ros_driver2/launch_ROS2" directory. Different launch files have different configuration parameter values and are used in different scenarios:
+ROS2 launch files are in the `livox_ros_driver2/launch` directory. Different launch files have different configuration parameter values and are used in different scenarios:
 
 | launch file name          | Description                                                  |
 | ------------------------- | ------------------------------------------------------------ |
-| rviz_HAP.launch   | Connect to HAP LiDAR device<br>Publish pointcloud2 format  data<br>Autoload rviz |
-| msg_HAP.launch     | Connect to HAP LiDAR device<br>Publish livox customized pointcloud data|
-| rviz_MID360.launch        | Connect to MID360 LiDAR device<br>Publish pointcloud2 format data <br>Autoload rviz|
-| msg_MID360.launch          | Connect to MID360 LiDAR device<br>Publish livox customized pointcloud data |
-| rviz_mixed.launch    | Connect to HAP and MID360 LiDAR device<br>Publish pointcloud2 format data <br>Autoload rviz|
-| msg_mixed.launch      | Connect to HAP and MID360 LiDAR device<br>Publish livox customized pointcloud data |
+| MID360_launch.py          | Connect to MID360; publish PointCloud2; optional RViz |
+| MID360s_launch.py         | Connect to MID360S; publish PointCloud2; optional RViz |
+| msg_MID360_launch.py      | Connect to MID360; publish Livox customized pointcloud data |
+| msg_MID360s_launch.py     | Connect to MID360S; publish Livox customized pointcloud data |
+| rviz_MID360_launch.py     | Connect to MID360; publish PointCloud2; autoload RViz |
+| rviz_MID360s_launch.py    | Connect to MID360S; publish PointCloud2; autoload RViz |
+| msg_HAP_launch.py         | Connect to HAP; publish Livox customized pointcloud data |
+| rviz_HAP_launch.py        | Connect to HAP; publish PointCloud2; autoload RViz |
 
 ### 3.2 Livox ros driver 2 internal main parameter configuration instructions
 
@@ -137,7 +113,7 @@ All internal parameters of Livox_ros_driver2 are in the launch file. Below are d
 
   **Note :**
 
-  Other parameters not mentioned in this table are not suggested to be changed unless fully understood.
+Other parameters not mentioned in this table are not suggested to be changed unless fully understood.
 
 &ensp;&ensp;&ensp;&ensp;***Livox_ros_driver2 pointcloud data detailed description :***
 
@@ -518,6 +494,7 @@ For more infomation about the HAP config, please refer to:
 
 * HAP
 * Mid360
+* Mid360S
 * (more types are comming soon...)
 
 ## 6. FAQ
