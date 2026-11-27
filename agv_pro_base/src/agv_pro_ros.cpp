@@ -440,11 +440,13 @@ bool AGV_PRO::readData()
       return false;
   }
 
-  if (buf_length[0] != RECEIVE_PAYLOAD_SIZE) {
+  // Frame length depends on controller firmware; the first 28 payload bytes keep the same layout
+  if (buf_length[0] < RECEIVE_PAYLOAD_SIZE) {
     //RCLCPP_ERROR(this->get_logger(), "The received length is incorrect:%u", buf_length[0]);
     return false;
   }
 
+  data_buf.resize(buf_length[0]);
   ret = boost::asio::read(*serial_port_, boost::asio::buffer(data_buf), ec);
   if (ec || ret != data_buf.size())
   {
@@ -455,7 +457,7 @@ bool AGV_PRO::readData()
   std::vector<uint8_t> recv_buf;
   recv_buf.push_back(0xFE);
   recv_buf.push_back(0xFE);
-  recv_buf.push_back(0x1C);
+  recv_buf.push_back(buf_length[0]);
   recv_buf.insert(recv_buf.end(), data_buf.begin(), data_buf.end());
   
   // print_hex("recv_buf", recv_buf); //debug
@@ -465,8 +467,9 @@ bool AGV_PRO::readData()
     return false;
   }
 
-  uint16_t received_crc = recv_buf[RECEIVE_FRAME_SIZE-1] | (recv_buf[RECEIVE_FRAME_SIZE-2] << 8);
-  uint16_t computed_crc = crc16_ibm(recv_buf.data(), RECEIVE_FRAME_SIZE-2);
+  const size_t frame_size = recv_buf.size();
+  uint16_t received_crc = recv_buf[frame_size-1] | (recv_buf[frame_size-2] << 8);
+  uint16_t computed_crc = crc16_ibm(recv_buf.data(), frame_size-2);
 
   if (received_crc != computed_crc) {
     RCLCPP_WARN(this->get_logger(), "CRC error: received 0x%04X, calculated 0x%04X", received_crc, computed_crc);
